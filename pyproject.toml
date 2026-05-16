@@ -1,0 +1,37 @@
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchor-bench"
+version = "0.1.0"
+description = "Focused Newton 1.2 SysID and sim-to-real benchmark tooling for robot actuator models."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pyyaml>=6.0",
+  "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+full = [
+  "isaacsim==6.0.0.0",
+  "newton==1.2.0",
+  "cmaes",
+  "optuna",
+  "pandas",
+  "pyarrow",
+  "tqdm",
+]
+
+[project.scripts]
+anchor-bench = "anchor_bench.cli.main:main"
+
+[tool.setuptools.packages.find]
+include = ["anchor_bench*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
