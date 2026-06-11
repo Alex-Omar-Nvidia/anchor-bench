@@ -9,7 +9,7 @@ from anchor_bench.robots.registry import get_robot, list_robots, validate_robot
 
 class RobotRegistryTests(unittest.TestCase):
     def test_registry_loads_all_reference_robots(self):
-        self.assertEqual(list_robots(), ["h1", "so101", "teststand", "ur10e"])
+        self.assertEqual(list_robots(), ["g1", "h1", "so101", "teststand", "ur10e"])
 
     def test_h1_resolves_native_assets_and_configs(self):
         robot = get_robot("h1")
@@ -25,6 +25,17 @@ class RobotRegistryTests(unittest.TestCase):
         self.assertTrue(robot.paths.actuators.exists())
         self.assertTrue(robot.paths.bounds.exists())
         self.assertEqual(validate_robot("so101"), [])
+
+    def test_g1_resolves_right_arm_training_defaults(self):
+        robot = get_robot("g1")
+        self.assertEqual(robot.spec.name, "g1")
+        self.assertEqual(
+            robot.spec.joint_names,
+            ["right_shoulder_pitch", "right_shoulder_roll", "right_shoulder_yaw", "right_elbow"],
+        )
+        self.assertEqual(robot.run_config["training"]["model"], "hybrid_residual")
+        self.assertEqual(robot.run_config["training"]["joint_type"], "right_shoulder_pitch")
+        self.assertEqual(validate_robot("g1"), [])
 
     def test_get_robot_rejects_inconsistent_joint_configs(self):
         with tempfile.TemporaryDirectory() as tmp:
