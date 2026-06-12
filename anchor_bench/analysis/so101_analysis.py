@@ -654,7 +654,7 @@ def run_so101_analysis(
     metrics_dir = output_root / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
     metrics_path = metrics_dir / "so101_metrics.csv"
-    plt = _load_pyplot()
+    plt = _load_pyplot() if make_joint_plots or make_end_effector_plots else None
 
     rows: list[list[str]] = [
         [
