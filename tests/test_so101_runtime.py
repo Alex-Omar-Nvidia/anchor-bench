@@ -341,7 +341,7 @@ class So101RuntimeTests(unittest.TestCase):
         self.assertEqual("cli", resolved.config_sources["max_trajectory_len"])
         self.assertEqual(3, resolved.max_iter)
 
-    def test_non_dry_run_without_runtime_exits_with_actionable_error(self):
+    def test_non_dry_run_without_runtime_or_asset_exits_with_actionable_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "custom_figure8_with_camera"
             data_dir.mkdir()
@@ -356,7 +356,10 @@ class So101RuntimeTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("anchor-bench:full", result.stderr)
+        self.assertTrue(
+            "anchor-bench:full" in result.stderr or "Missing asset 'so101.usd'" in result.stderr,
+            result.stderr,
+        )
 
     def test_so101_runtime_helpers_use_configured_joint_names(self):
         from anchor_bench.runtime.so101_scene import _matrix_from_param_map, so101_joint_names
