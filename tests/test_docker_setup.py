@@ -269,6 +269,12 @@ class DockerSetupTests(unittest.TestCase):
             self.assertIn("--user \"${HOST_UID}:${HOST_GID}\"", script_text)
             self.assertIn("-e HOME=/tmp/anchor-bench-home", script_text)
             self.assertIn("-e XDG_CACHE_HOME=/tmp/anchor-bench-cache", script_text)
+        self.assertIn("CONTAINER_IDENTITY_NAME=anchor-bench", run_persist_text)
+        self.assertIn("prepare_container_identity_files", run_persist_text)
+        self.assertIn("Anchor Bench Host User:/tmp/anchor-bench-home:/bin/bash", run_persist_text)
+        self.assertIn("-e USER=\"${CONTAINER_IDENTITY_NAME}\"", run_persist_text)
+        self.assertIn("-v \"${CONTAINER_PASSWD_PATH}:/etc/passwd:ro\"", run_persist_text)
+        self.assertIn("-v \"${CONTAINER_GROUP_PATH}:/etc/group:ro\"", run_persist_text)
 
 
 if __name__ == "__main__":

@@ -34,9 +34,12 @@ XAUTH_DIR="${XAUTH_DIR:-$(mktemp -d -t anchor-bench-persist-xauth.XXXXXX)}"
 XAUTH_PATH="${XAUTH_DIR}/cookie"
 HOST_UID="$(id -u)"
 HOST_GID="$(id -g)"
+CONTAINER_IDENTITY_NAME=anchor-bench
 ANCHOR_BENCH_GPUS="${ANCHOR_BENCH_GPUS:-all}"
 ANCHOR_BENCH_NETWORK="${ANCHOR_BENCH_NETWORK:-host}"
 ANCHOR_BENCH_RUN_AS_ROOT="${ANCHOR_BENCH_RUN_AS_ROOT:-0}"
+CONTAINER_PASSWD_PATH=
+CONTAINER_GROUP_PATH=
 
 FINGERPRINT_FILES=(
   "${SCRIPT_DIR}/Dockerfile"
@@ -59,9 +62,13 @@ isaaclab_pythonpath() {
 
 EXEC_ENV=()
 build_exec_env() {
-  EXEC_ENV=()
+  EXEC_ENV=(
+    -e USER="${CONTAINER_IDENTITY_NAME}"
+    -e LOGNAME="${CONTAINER_IDENTITY_NAME}"
+    -e TORCHINDUCTOR_CACHE_DIR=/tmp/anchor-bench-cache/torchinductor
+  )
   if [[ -z "${HEADLESS:-}" && -n "${DISPLAY:-}" ]]; then
-    EXEC_ENV=(-e "DISPLAY=$DISPLAY")
+    EXEC_ENV+=(-e "DISPLAY=$DISPLAY")
   fi
   if [[ -n "${ANCHOR_BENCH_ISAACLAB_DIR:-}" ]]; then
     local extra_pythonpath
@@ -152,6 +159,33 @@ refresh_x11_cookie() {
   mv -f "$tmp" "$XAUTH_PATH"
 }
 
+prepare_container_identity_files() {
+  mkdir -p "${XAUTH_DIR}"
+  local passwd_base="${XAUTH_DIR}/passwd.base"
+  local group_base="${XAUTH_DIR}/group.base"
+  CONTAINER_PASSWD_PATH="${XAUTH_DIR}/passwd"
+  CONTAINER_GROUP_PATH="${XAUTH_DIR}/group"
+
+  docker run --rm --entrypoint cat "${IMAGE}" /etc/passwd >"${passwd_base}"
+  docker run --rm --entrypoint cat "${IMAGE}" /etc/group >"${group_base}"
+
+  {
+    printf '%s:x:%s:%s:Anchor Bench Host User:/tmp/anchor-bench-home:/bin/bash\n' \
+      "${CONTAINER_IDENTITY_NAME}" "${HOST_UID}" "${HOST_GID}"
+    awk -F: -v name="${CONTAINER_IDENTITY_NAME}" -v uid="${HOST_UID}" \
+      '$1 != name && $3 != uid' "${passwd_base}"
+  } >"${CONTAINER_PASSWD_PATH}"
+
+  {
+    printf '%s:x:%s:\n' "${CONTAINER_IDENTITY_NAME}" "${HOST_GID}"
+    awk -F: -v name="${CONTAINER_IDENTITY_NAME}" -v gid="${HOST_GID}" \
+      '$1 != name && $3 != gid' "${group_base}"
+  } >"${CONTAINER_GROUP_PATH}"
+
+  chmod 0644 "${CONTAINER_PASSWD_PATH}" "${CONTAINER_GROUP_PATH}"
+  rm -f "${passwd_base}" "${group_base}"
+}
+
 build_image() {
   echo "[INFO] Rebuilding full image..."
   ANCHOR_BENCH_IMAGE="${IMAGE}" ANCHOR_BENCH_DOCKER_TARGET=full \
@@ -218,6 +252,15 @@ start_persistent_container() {
     echo "[INFO] Container user mapped to host UID:GID ${HOST_UID}:${HOST_GID}"
   fi
 
+  local identity_args=()
+  if [[ "${ANCHOR_BENCH_RUN_AS_ROOT}" != "1" ]]; then
+    prepare_container_identity_files
+    identity_args=(
+      -v "${CONTAINER_PASSWD_PATH}:/etc/passwd:ro"
+      -v "${CONTAINER_GROUP_PATH}:/etc/group:ro"
+    )
+  fi
+
   echo "[INFO] Starting persistent container: $CONTAINER"
   docker run -d \
     --name "$CONTAINER" \
@@ -237,6 +280,7 @@ start_persistent_container() {
     --label "${FINGERPRINT_LABEL}.files=${per_file_blob}" \
     -v "${REPO_ROOT}:/workspace/anchor-bench" \
     "${data_args[@]}" \
+    "${identity_args[@]}" \
     -v anchor-bench-cache-kit:/isaac-sim/kit/cache \
     -v anchor-bench-cache-ov:/home/anchor/.cache/ov \
     -v anchor-bench-cache-pip:/home/anchor/.cache/pip \
