@@ -9,6 +9,7 @@ from anchor_bench.robots.registry import get_robot, list_robots, validate_robot
 
 class RobotRegistryTests(unittest.TestCase):
     def test_registry_loads_all_reference_robots(self):
+        # Pin the reference robot set so additions stay deliberate.
         self.assertEqual(list_robots(), ["g1", "h1", "so101", "teststand", "ur10e"])
 
     def test_h1_resolves_native_assets_and_configs(self):

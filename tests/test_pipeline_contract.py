@@ -148,11 +148,11 @@ class PipelineContractTests(unittest.TestCase):
                 run_experiment_benchmark(config, dry_run=False)
 
             seed_42_call = next(call for call in run_batch.call_args_list if call.kwargs["seed"] == 42)
-            motions = seed_42_call.args[1]
-            self.assertEqual("so101", seed_42_call.args[0])
-            self.assertEqual("custom_motion", motions[0].motion_name)
-            self.assertTrue(motions[0].motion.endswith("datasets/custom_motion"))
-            self.assertTrue(seed_42_call.args[2].endswith("benchmark/seed_42"))
+            robot_arg, motions_arg, output_arg = seed_42_call.args
+            self.assertEqual("so101", robot_arg)
+            self.assertEqual("custom_motion", motions_arg[0].motion_name)
+            self.assertTrue(motions_arg[0].motion.endswith("datasets/custom_motion"))
+            self.assertTrue(output_arg.endswith("benchmark/seed_42"))
             self.assertEqual(str(params_42), seed_42_call.kwargs["actuator_params"])
             self.assertEqual("synthetic", seed_42_call.kwargs["dataset"])
             self.assertEqual("fitted_implicit", seed_42_call.kwargs["actuator_model"])

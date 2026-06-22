@@ -160,8 +160,6 @@ class NativeActuatorSchemaTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, f"run.yaml.sysid has unknown keys: {key}"):
                     RobotRunFile.from_dict(data, "run.yaml")
 
-
-
     def test_robot_run_schema_accepts_training_defaults(self):
         from anchor_bench.core.schemas import RobotRunFile
 

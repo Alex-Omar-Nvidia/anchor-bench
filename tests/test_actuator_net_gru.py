@@ -25,6 +25,7 @@ class ActuatorNetGRUTests(unittest.TestCase):
 
         from anchor_bench.runtime.actuator_net_gru import _coerce_configclass
 
+        # Identity lambdas stand in for configclass decorators without importing Isaac Lab.
         direct = lambda cls: cls
         nested = lambda cls: cls
 

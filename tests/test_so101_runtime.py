@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import tempfile
@@ -95,16 +94,10 @@ class So101RuntimeTests(unittest.TestCase):
         from anchor_bench.runtime.assets import AssetNotFoundError, resolve_robot_asset
         from anchor_bench.robots.registry import get_robot
 
-        env = os.environ.copy()
-        old = os.environ.pop("ANCHOR_BENCH_ASSET_DIR", None)
-        try:
+        with patch.dict("os.environ", {}, clear=False) as env:
+            env.pop("ANCHOR_BENCH_ASSET_DIR", None)
             with self.assertRaises(AssetNotFoundError) as ctx:
                 resolve_robot_asset(get_robot("so101"), "missing-so101.usd")
-        finally:
-            if old is not None:
-                os.environ["ANCHOR_BENCH_ASSET_DIR"] = old
-            else:
-                os.environ.update(env)
 
         message = str(ctx.exception)
         self.assertEqual(
@@ -481,8 +474,9 @@ class So101RuntimeTests(unittest.TestCase):
             def root_view(self):
                 raise AssertionError("root_view should not be searched")
 
+        changes = []
+
         class FakeNewtonManager:
-            changes = []
 
             @classmethod
             def get_model(cls):
@@ -490,7 +484,7 @@ class So101RuntimeTests(unittest.TestCase):
 
             @classmethod
             def add_model_change(cls, change):
-                cls.changes.append(change)
+                changes.append(change)
 
         fake_damping = FakeDamping()
         fake_flags = SimpleNamespace(JOINT_DOF_PROPERTIES="joint_dof_properties")
@@ -507,7 +501,7 @@ class So101RuntimeTests(unittest.TestCase):
             _write_viscous_friction(FakeRobot(), FakeTensor([[0.2, 0.4], [0.6, 0.8]]), [0, 2])
 
         np.testing.assert_allclose(fake_damping.values, [[0.2, 0.0, 0.4], [0.6, 0.0, 0.8]])
-        self.assertEqual(FakeNewtonManager.changes, ["joint_dof_properties"])
+        self.assertEqual(changes, ["joint_dof_properties"])
 
     def test_write_viscous_friction_fails_fast_without_passive_damping(self):
         from anchor_bench.runtime.so101_scene import _write_viscous_friction
