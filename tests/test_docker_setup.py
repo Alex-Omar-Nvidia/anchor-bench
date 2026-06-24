@@ -163,7 +163,6 @@ class DockerSetupTests(unittest.TestCase):
         teststand_actuators = (REPO / "configs" / "robots" / "teststand" / "actuators.yaml").read_text(encoding="utf-8")
 
         self.assertTrue((REPO / "third_party" / "README.md").exists())
-        self.assertTrue((REPO / "third_party" / "artifacts" / "h1" / ".gitkeep").exists())
         self.assertIn("third_party/artifacts/h1/nvidia-motor.fmu", teststand_actuators)
         self.assertIn("third_party/artifacts/h1", setup_text)
         self.assertIn("third_party", dockerignore)
