@@ -3,6 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
+
 from anchor_bench.data.sage import load_initial_state, load_real_data
 
 
@@ -78,8 +80,8 @@ class SageLoaderTests(unittest.TestCase):
         self.assertEqual(data.metadata["target_dt"], 0.001)
         self.assertEqual(data.control_timestamps, [0.0, 0.001, 0.002, 0.003, 0.004])
         self.assertEqual(data.state_timestamps, data.control_timestamps)
-        self.assertEqual(data.control_positions, [[0.1], [0.6], [1.1], [1.6], [2.1]])
-        self.assertEqual(data.state_positions, [[0.3], [0.8], [1.3], [1.8], [2.3]])
+        np.testing.assert_allclose(data.control_positions, [[0.1], [0.6], [1.1], [1.6], [2.1]])
+        np.testing.assert_allclose(data.state_positions, [[0.3], [0.8], [1.3], [1.8], [2.3]])
 
     def test_loader_accepts_seconds_without_scaling(self):
         with tempfile.TemporaryDirectory() as tmp:

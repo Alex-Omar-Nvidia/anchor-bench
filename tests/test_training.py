@@ -222,7 +222,7 @@ class TrainingRunnerTests(unittest.TestCase):
             extra_files = {"metadata.json": ""}
             network = torch.jit.load(str(network_path), _extra_files=extra_files)
             self.assertTrue(hasattr(network, "gru"))
-            self.assertFalse(extra_files["metadata.json"])
+            self.assertEqual("", extra_files["metadata.json"].decode("utf-8"))
             output, hidden = network(torch.zeros(2, 1, 3), torch.zeros(1, 2, 4))
             self.assertEqual((2, 1, 1), tuple(output.shape))
             self.assertEqual((1, 2, 4), tuple(hidden.shape))

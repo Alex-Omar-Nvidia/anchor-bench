@@ -96,6 +96,7 @@ See [repo structure](docs/repo-structure.md) for the detailed rules.
 - [CLI commands](docs/cli.md): full `anchor-bench` command reference.
 - [Repo structure](docs/repo-structure.md): what belongs in `configs/`, `assets/`, `inputs/`, `outputs`, and `third_party/`.
 - [Artifacts](docs/artifacts.md): large files, SO-101 USD handling, and generated output locations.
+- [Host-safe end-to-end test](docs/end-to-end-test.md): SysID to benchmark to analysis contract coverage.
 - [Robot plugins](docs/robot-plugin.md): files required to add a new robot.
 - [Newton 1.2 migration](docs/migration-newton-1.2.md): actuator schema migration notes.
 

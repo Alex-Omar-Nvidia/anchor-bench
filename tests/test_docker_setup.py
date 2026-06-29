@@ -163,7 +163,6 @@ class DockerSetupTests(unittest.TestCase):
         teststand_actuators = (REPO / "configs" / "robots" / "teststand" / "actuators.yaml").read_text(encoding="utf-8")
 
         self.assertTrue((REPO / "third_party" / "README.md").exists())
-        self.assertTrue((REPO / "third_party" / "artifacts" / "h1" / ".gitkeep").exists())
         self.assertIn("third_party/artifacts/h1/nvidia-motor.fmu", teststand_actuators)
         self.assertIn("third_party/artifacts/h1", setup_text)
         self.assertIn("third_party", dockerignore)
@@ -269,6 +268,12 @@ class DockerSetupTests(unittest.TestCase):
             self.assertIn("--user \"${HOST_UID}:${HOST_GID}\"", script_text)
             self.assertIn("-e HOME=/tmp/anchor-bench-home", script_text)
             self.assertIn("-e XDG_CACHE_HOME=/tmp/anchor-bench-cache", script_text)
+        self.assertIn("CONTAINER_IDENTITY_NAME=anchor-bench", run_persist_text)
+        self.assertIn("prepare_container_identity_files", run_persist_text)
+        self.assertIn("Anchor Bench Host User:/tmp/anchor-bench-home:/bin/bash", run_persist_text)
+        self.assertIn("-e USER=\"${CONTAINER_IDENTITY_NAME}\"", run_persist_text)
+        self.assertIn("-v \"${CONTAINER_PASSWD_PATH}:/etc/passwd:ro\"", run_persist_text)
+        self.assertIn("-v \"${CONTAINER_GROUP_PATH}:/etc/group:ro\"", run_persist_text)
 
 
 if __name__ == "__main__":

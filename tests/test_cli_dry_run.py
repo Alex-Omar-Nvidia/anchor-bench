@@ -1,6 +1,7 @@
 
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -28,7 +29,9 @@ class CliDryRunTests(unittest.TestCase):
 
     def test_sysid_benchmark_and_analysis_dry_runs(self):
         data = "inputs/datasets/so101/custom_figure8_with_camera"
-        result = run_cli("sysid", "--robot", "so101", "--data", data, "--output", "/tmp/anchor-bench-sysid", "--dry-run")
+        with tempfile.TemporaryDirectory() as tmp:
+            sysid_output = Path(tmp) / "anchor-bench-sysid"
+            result = run_cli("sysid", "--robot", "so101", "--data", data, "--output", str(sysid_output), "--dry-run")
         self.assertIn("dry_run: true", result.stdout)
         self.assertIn("newton 1.2", result.stdout)
 
@@ -72,50 +75,52 @@ class CliDryRunTests(unittest.TestCase):
     def test_train_actuator_dry_runs_for_pure_and_hybrid_gru(self):
         data = "inputs/datasets/so101/custom_figure8_with_camera"
 
-        result = run_cli(
-            "train-actuator",
-            "--robot",
-            "so101",
-            "--model",
-            "gru",
-            "--data",
-            data,
-            "--joint-type",
-            "Rotation",
-            "--output",
-            "/tmp/anchor-bench-training",
-            "--input-columns",
-            "position,position_error,velocity",
-            "--target-column",
-            "torque",
-            "--skip-optuna",
-            "--dry-run",
-        )
-        self.assertIn("workflow: train-actuator", result.stdout)
-        self.assertIn("--model", result.stdout)
-        self.assertIn("gru", result.stdout)
-        self.assertIn("--input-columns", result.stdout)
-        self.assertIn("position,position_error,velocity", result.stdout)
-        self.assertIn("--target-column", result.stdout)
-        self.assertIn("outputs/training", result.stdout)
+        with tempfile.TemporaryDirectory() as tmp:
+            training_root = Path(tmp) / "anchor-bench-training"
+            result = run_cli(
+                "train-actuator",
+                "--robot",
+                "so101",
+                "--model",
+                "gru",
+                "--data",
+                data,
+                "--joint-type",
+                "Rotation",
+                "--output",
+                str(training_root / "gru"),
+                "--input-columns",
+                "position,position_error,velocity",
+                "--target-column",
+                "torque",
+                "--skip-optuna",
+                "--dry-run",
+            )
+            self.assertIn("workflow: train-actuator", result.stdout)
+            self.assertIn("--model", result.stdout)
+            self.assertIn("gru", result.stdout)
+            self.assertIn("--input-columns", result.stdout)
+            self.assertIn("position,position_error,velocity", result.stdout)
+            self.assertIn("--target-column", result.stdout)
+            self.assertIn("outputs/training", result.stdout)
 
-        result = run_cli(
-            "train-actuator",
-            "--robot",
-            "so101",
-            "--model",
-            "hybrid_residual",
-            "--data",
-            data,
-            "--joint-type",
-            "Rotation",
-            "--output",
-            "/tmp/anchor-bench-training",
-            "--skip-optuna",
-            "--dry-run",
-        )
-        self.assertIn("hybrid_residual", result.stdout)
-        self.assertIn("residual torque", result.stdout)
+            result = run_cli(
+                "train-actuator",
+                "--robot",
+                "so101",
+                "--model",
+                "hybrid_residual",
+                "--data",
+                data,
+                "--joint-type",
+                "Rotation",
+                "--output",
+                str(training_root / "hybrid_residual"),
+                "--skip-optuna",
+                "--dry-run",
+            )
+            self.assertIn("hybrid_residual", result.stdout)
+            self.assertIn("residual torque", result.stdout)
 
 
 if __name__ == "__main__":
