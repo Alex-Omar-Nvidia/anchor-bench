@@ -48,7 +48,7 @@ def build_implicit_actuator_params(bundle: RobotBundle) -> dict[str, Any]:
 _FITTED_VECTOR_KEYS = ("stiffness", "damping", "armature", "dry_friction", "viscous_friction")
 _FITTED_SCALAR_KEYS = ("motor_lag_ms", "effort_limit_sim", "velocity_limit_sim")
 _FITTED_OVERLAY_KEYS = set(_FITTED_VECTOR_KEYS) | set(_FITTED_SCALAR_KEYS)
-_FITTED_SUMMARY_KEYS = {"best_mse", "robot_name", "mode", "data_source", "provenance"}
+_FITTED_SUMMARY_KEYS = {"best_mse", "robot_name", "mode", "joints", "data_source", "provenance"}
 
 
 def load_implicit_actuator_params(bundle: RobotBundle, params_path: str | Path | None = None) -> dict[str, Any]:

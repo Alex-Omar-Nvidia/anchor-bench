@@ -55,7 +55,12 @@ class So101RuntimeTests(unittest.TestCase):
                 "  Rotation: 10.0\n"
                 "damping:\n"
                 "  Jaw: 1.5\n"
-                "best_mse: 0.01\n",
+                "best_mse: 0.01\n"
+                "robot_name: so101\n"
+                "mode: all_joints\n"
+                "joints:\n"
+                "  - Rotation\n"
+                "data_source: inputs/example\n",
                 encoding="utf-8",
             )
 
@@ -67,6 +72,7 @@ class So101RuntimeTests(unittest.TestCase):
         self.assertEqual(params["effort_limit_sim"], 3.35)
         self.assertEqual(params["velocity_limit_sim"], 30.0)
         self.assertNotIn("best_mse", params)
+        self.assertNotIn("joints", params)
 
     def test_bounds_loader_returns_typed_bounds_file(self):
         from anchor_bench.runtime.so101_config import load_sysid_bounds
@@ -385,6 +391,14 @@ class So101RuntimeTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "missing stiffness values"):
             _matrix_from_param_map({"stiffness": {"JointA": 1.0}}, "stiffness", ["JointA", "JointB"], 1, FakeTorch, "cpu")
+
+    def test_matching_fixed_base_config_does_not_override_usd_root_mode(self):
+        from anchor_bench.runtime.so101_scene import resolve_fix_root_override
+
+        self.assertIsNone(resolve_fix_root_override(True, True))
+        self.assertIsNone(resolve_fix_root_override(False, False))
+        self.assertFalse(resolve_fix_root_override(False, True))
+        self.assertTrue(resolve_fix_root_override(True, False))
 
     def test_scene_builder_passes_fix_root_link_to_usd_spawn(self):
         from anchor_bench.runtime.so101_scene import build_scene_class

@@ -4,6 +4,11 @@ from pathlib import Path
 from typing import Any
 
 
+def resolve_fix_root_override(configured: bool, asset_fixed_base: bool) -> bool | None:
+    """Only override the USD root mode when configuration requests a real change."""
+    return None if configured == asset_fixed_base else configured
+
+
 def so101_joint_names(bundle) -> list[str]:
     joint_names = list(bundle.spec.joint_names)
     if not joint_names:

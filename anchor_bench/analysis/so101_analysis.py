@@ -547,7 +547,7 @@ class IsaacLabNewtonSo101Fk:
             from isaaclab.sim import SimulationCfg, SimulationContext
             from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
-            from anchor_bench.runtime.so101_scene import build_scene_class
+            from anchor_bench.runtime.so101_scene import build_scene_class, resolve_fix_root_override
             from anchor_bench.robots.registry import get_robot
             from anchor_bench.runtime.assets import resolve_runtime_asset
             from anchor_bench.runtime.so101_config import load_implicit_actuator_params
@@ -566,7 +566,10 @@ class IsaacLabNewtonSo101Fk:
             fix_root = bool(run_cfg.get("benchmark", {}).get("fix_root", bundle.spec.fixed_base))
             actuator_values = load_implicit_actuator_params(bundle, None)
             usd_path = resolve_runtime_asset(bundle)
-            SceneCfg = build_scene_class(usd_path, actuator_values, list(bundle.spec.joint_names), fix_root=fix_root)
+            fix_root_override = resolve_fix_root_override(fix_root, bundle.spec.fixed_base)
+            SceneCfg = build_scene_class(
+                usd_path, actuator_values, list(bundle.spec.joint_names), fix_root=fix_root_override
+            )
             sim_cfg = SimulationCfg(dt=timing.physics_dt, render_interval=timing.render_interval, gravity=(0.0, 0.0, -9.81))
             sim_cfg.physics = NewtonCfg(
                 solver_cfg=MJWarpSolverCfg(
