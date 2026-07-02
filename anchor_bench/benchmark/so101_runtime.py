@@ -21,6 +21,7 @@ from anchor_bench.runtime.so101_config import load_implicit_actuator_params
 from anchor_bench.runtime.so101_scene import (
     apply_static_actuator_params,
     build_scene_class,
+    resolve_fix_root_override,
     so101_joint_names,
     to_torch,
 )
@@ -216,6 +217,7 @@ def run_so101_benchmark_batch(
                 )
             )
         batch_size = len(loaded_motions)
+        _log(f"Starting SO-101 benchmark: envs={batch_size}, motions={batch_size}")
         actual_num_envs = batch_size
         configured_batch_size = int(num_envs or batch_size)
 
@@ -225,7 +227,8 @@ def run_so101_benchmark_batch(
 
         actuator_values = load_implicit_actuator_params(bundle, actuator_params)
         usd_path = resolve_runtime_asset(bundle)
-        SceneCfg = build_scene_class(usd_path, actuator_values, joint_names, fix_root=fix_root)
+        fix_root_override = resolve_fix_root_override(fix_root, bundle.spec.fixed_base)
+        SceneCfg = build_scene_class(usd_path, actuator_values, joint_names, fix_root=fix_root_override)
         sim_cfg = SimulationCfg(dt=physics_dt, render_interval=timing.render_interval, gravity=(0.0, 0.0, -9.81))
         sim_cfg.physics = NewtonCfg(
             solver_cfg=MJWarpSolverCfg(
