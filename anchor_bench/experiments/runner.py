@@ -525,12 +525,11 @@ def run_experiment_analysis(config_path: str | Path, dry_run: bool = True) -> Co
     plan = build_experiment_analysis_plan(config_path, dry_run=dry_run)
     if dry_run:
         return plan
-    if config.robot != "so101":
-        raise ValueError("Full analysis currently supports only robot=so101")
-    from anchor_bench.analysis.so101_analysis import run_so101_analysis
+    from anchor_bench.analysis.runtime import run_robot_analysis
 
     for run in runs:
-        run_so101_analysis(
+        run_robot_analysis(
+            config.robot,
             result_folder=run.result_folder,
             output=run.output,
             datasets=run.datasets,

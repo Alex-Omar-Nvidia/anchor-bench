@@ -121,14 +121,13 @@ def run_sysid(config: SysIdRunConfig) -> CommandPlan:
     from anchor_bench.runtime.environment import require_full_runtime
 
     require_full_runtime(("isaaclab", "isaaclab_newton", "newton"), workflow="sysid")
-    if resolved.robot != "so101":
-        raise ValueError("Full runtime execution currently supports only robot=so101")
     from anchor_bench.runtime.assets import resolve_runtime_asset
 
     resolve_runtime_asset(get_robot(resolved.robot))
-    from anchor_bench.sysid.so101_runtime import run_so101_sysid
+    from anchor_bench.sysid.runtime import run_robot_sysid
 
-    run_so101_sysid(
+    run_robot_sysid(
+        resolved.robot,
         data=resolved.data,
         output=resolved.output,
         headless=resolved.headless,

@@ -117,9 +117,7 @@ def run_analysis(
     )
     if resolved.dry_run:
         return plan
-    if resolved.robot != "so101":
-        raise ValueError("Full runtime execution currently supports only robot=so101")
-    from anchor_bench.analysis.so101_analysis import run_so101_analysis
+    from anchor_bench.analysis.runtime import run_robot_analysis
 
     motions: Iterable[str] | None
     if resolved.motion_names is None or resolved.motion_names == "*":
@@ -128,7 +126,8 @@ def run_analysis(
         motions = [str(item) for item in resolved.motion_names]
     else:
         motions = [str(resolved.motion_names)]
-    run_so101_analysis(
+    run_robot_analysis(
+        resolved.robot,
         result_folder=resolved.result_folder,
         output=resolved.output,
         motions=motions,

@@ -119,16 +119,15 @@ def run_benchmark_batch(
     from anchor_bench.runtime.environment import require_full_runtime
 
     require_full_runtime(("isaaclab", "isaaclab_newton", "newton"), workflow="benchmark")
-    if robot != "so101":
-        raise ValueError("Full runtime execution currently supports only robot=so101")
     from anchor_bench.runtime.assets import resolve_runtime_asset
 
     resolve_runtime_asset(get_robot(robot))
-    from anchor_bench.benchmark.so101_runtime import So101BenchmarkMotion, run_so101_benchmark_batch
+    from anchor_bench.benchmark.runtime import RobotBenchmarkMotion, run_robot_benchmark_batch
 
-    run_so101_benchmark_batch(
+    run_robot_benchmark_batch(
+        robot,
         motions=[
-            So101BenchmarkMotion(motion=motion.motion, motion_name=motion.motion_name)
+            RobotBenchmarkMotion(motion=motion.motion, motion_name=motion.motion_name)
             for motion in motions
         ],
         output=output,
