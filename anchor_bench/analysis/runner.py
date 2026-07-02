@@ -28,14 +28,13 @@ def resolve_analysis_run_config(
     motions: str | list[str] | None = None,
 ) -> ResolvedAnalysisRunConfig:
     bundle = get_robot(robot)
-    run_cfg = bundle.run_config
-    benchmark_cfg = run_cfg.get("benchmark", {})
-    analysis_cfg = run_cfg.get("analysis", {})
-    result = resolve_required_text(result_folder, benchmark_cfg.get("output_folder"), "outputs/sim2real_benchmark", "--result-folder")
-    output_value = resolve_required_text(output, analysis_cfg.get("output_dir"), "outputs/sim2real_analysis", "--output")
-    sample_dt_value = analysis_cfg.get("sample_dt")
+    benchmark_cfg = bundle.run_config.benchmark
+    analysis_cfg = bundle.run_config.analysis
+    result = resolve_required_text(result_folder, benchmark_cfg.output_folder, "outputs/sim2real_benchmark", "--result-folder")
+    output_value = resolve_required_text(output, analysis_cfg.output_dir, "outputs/sim2real_analysis", "--output")
+    sample_dt_value = analysis_cfg.sample_dt
     sample_dt = float(sample_dt_value) if sample_dt_value is not None else None
-    motion_names = defaulted_value(motions, analysis_cfg.get("motion_names"), None)
+    motion_names = defaulted_value(motions, analysis_cfg.motion_names, None)
     return ResolvedAnalysisRunConfig(
         robot=robot,
         result_folder=resolve_repo_path_text(result),

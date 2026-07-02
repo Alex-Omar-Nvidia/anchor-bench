@@ -5,12 +5,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from anchor_bench.core.experiment_schema import (
+    ExperimentActuatorModel,
+    ExperimentAnalysis,
+    ExperimentAnalysisPlots,
+    ExperimentBenchmark,
+    ExperimentDataset,
+    ExperimentFile,
+    ExperimentOutputs,
+)
+from anchor_bench.core.run_schema import (
+    AnalysisDefaults,
+    BenchmarkDefaults,
+    CMAESConfig,
+    ConfigSection,
+    RobotRunFile,
+    SimulationDefaults,
+    SysIdDefaults,
+    TrainingDefaults,
+)
+
 
 CONTROLLERS = {"pd", "pid", "mlp", "lstm", "gru", "fmu", "torque_passthrough"}
 GRU_INPUT_COLUMNS = {"position", "position_error", "velocity", "solver_pd"}
 CLAMPS = {"effort", "velocity", "dc_motor", "position", "none"}
-EXPERIMENT_ACTUATOR_TYPES = CONTROLLERS | {"implicit"}
-EXPERIMENT_BENCHMARK_PARAMS = {"initial", "fitted"}
 
 _CONTROLLER_KNOWN_KEYS = {"type", "parameters", "source", "network_file"}
 _RESIDUAL_KNOWN_KEYS = {"type", "network_file", "stats_file", "input_columns", "output_column", "source", "parameters"}
@@ -264,29 +282,6 @@ class BoundsRange:
         return cls(lower=lower, upper=upper)
 
 
-_CMAES_KNOWN_KEYS = {"sigma", "max_iterations", "epsilon"}
-
-
-@dataclass(frozen=True)
-class CMAESConfig:
-    sigma: float = 0.5
-    max_iterations: int = 200
-    epsilon: float | None = 0.01
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None, context: str) -> "CMAESConfig":
-        if not data:
-            return cls()
-        unknown = sorted(set(data) - _CMAES_KNOWN_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        return cls(
-            sigma=float(data.get("sigma", 0.5)),
-            max_iterations=int(data.get("max_iterations", 200)),
-            epsilon=float(data["epsilon"]) if "epsilon" in data else 0.01,
-        )
-
-
 _BOUNDS_KNOWN_KEYS = {"schema_version", "mirror", "joint_types", "parameters", "fixed"}
 
 
@@ -325,386 +320,6 @@ class SysIdBoundsFile:
             joint_types=joint_types,
             parameters=parameters,
             fixed={str(k): float(v) for k, v in (data.get("fixed") or {}).items()},
-        )
-
-
-_RUN_KNOWN_KEYS = {"simulation", "benchmark", "analysis", "sysid", "training"}
-_RUN_SIMULATION_KEYS = {
-    "physics_freq", "control_freq", "render_freq", "integrator",
-    "solver_iterations", "line_search_iterations", "ls_iterations",
-}
-_RUN_BENCHMARK_KEYS = {
-    "dataset", "fix_root", "buffer_time", "motion_files", "motion_name",
-    "output_folder", "real_init_pose_sync",
-}
-_RUN_ANALYSIS_KEYS = {"output_dir", "sample_dt", "motion_names"}
-_RUN_SYSID_KEYS = {
-    "output_dir", "real_data_dir", "joints", "num_envs", "buffer_time", "cmaes",
-}
-_TRAINING_MODELS = {"gru", "hybrid_residual"}
-_RUN_TRAINING_KEYS = {
-    "model", "real_data_dir", "output_dir", "joint_type", "skip_optuna",
-    "trials", "trial_epochs", "final_epochs", "n_streams", "noise_std", "seed",
-    "input_columns", "target_column",
-}
-
-
-def _optional_mapping_section(
-    data: dict[str, Any],
-    section: str,
-    source: str,
-    known_keys: set[str],
-) -> dict[str, Any]:
-    if section not in data:
-        return {}
-    value = data.get(section) or {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{source}.{section} must be a mapping")
-    unknown = sorted(set(value) - known_keys)
-    if unknown:
-        raise ValueError(f"{source}.{section} has unknown keys: {', '.join(unknown)}")
-    return dict(value)
-
-
-def _validate_training_section(training: dict[str, Any], source: str) -> dict[str, Any]:
-    if not training:
-        return training
-    resolved = dict(training)
-    model = str(resolved.get("model", "gru"))
-    if model not in _TRAINING_MODELS:
-        raise ValueError(f"{source}.training.model {model!r} must be one of {sorted(_TRAINING_MODELS)}")
-    resolved["model"] = model
-    if "skip_optuna" in resolved and not isinstance(resolved["skip_optuna"], bool):
-        raise ValueError(f"{source}.training.skip_optuna must be a boolean")
-    for key in ("trials", "trial_epochs", "final_epochs", "n_streams"):
-        if key in resolved:
-            value = int(resolved[key])
-            if value < 1:
-                raise ValueError(f"{source}.training.{key} must be >= 1")
-            resolved[key] = value
-    if "noise_std" in resolved:
-        noise_std = float(resolved["noise_std"])
-        if noise_std < 0.0:
-            raise ValueError(f"{source}.training.noise_std must be >= 0")
-        resolved["noise_std"] = noise_std
-    if "seed" in resolved:
-        resolved["seed"] = int(resolved["seed"])
-    if "input_columns" in resolved:
-        resolved["input_columns"] = _validate_gru_columns(resolved["input_columns"], f"{source}.training.input_columns")
-    if "target_column" in resolved:
-        resolved["target_column"] = str(resolved["target_column"])
-    return resolved
-
-
-@dataclass(frozen=True)
-class RobotRunFile:
-    simulation: dict[str, Any] = field(default_factory=dict)
-    benchmark: dict[str, Any] = field(default_factory=dict)
-    analysis: dict[str, Any] = field(default_factory=dict)
-    sysid: dict[str, Any] = field(default_factory=dict)
-    training: dict[str, Any] = field(default_factory=dict)
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any], source: str | Path) -> "RobotRunFile":
-        text_context = str(source)
-        if not isinstance(data, dict):
-            raise ValueError(f"{text_context} must be a mapping")
-        unknown = sorted(set(data) - _RUN_KNOWN_KEYS)
-        if unknown:
-            raise ValueError(f"{text_context} has unknown keys: {', '.join(unknown)}")
-
-        simulation = _optional_mapping_section(data, "simulation", text_context, _RUN_SIMULATION_KEYS)
-        benchmark = _optional_mapping_section(data, "benchmark", text_context, _RUN_BENCHMARK_KEYS)
-        analysis = _optional_mapping_section(data, "analysis", text_context, _RUN_ANALYSIS_KEYS)
-        sysid = _optional_mapping_section(data, "sysid", text_context, _RUN_SYSID_KEYS)
-        training = _optional_mapping_section(data, "training", text_context, _RUN_TRAINING_KEYS)
-        training = _validate_training_section(training, text_context)
-
-        if sysid:
-            cmaes = CMAESConfig.from_dict(sysid.get("cmaes"), f"{text_context}.sysid.cmaes")
-            sysid["cmaes"] = {
-                "sigma": cmaes.sigma,
-                "max_iterations": cmaes.max_iterations,
-                "epsilon": cmaes.epsilon,
-            }
-
-        return cls(simulation=simulation, benchmark=benchmark, analysis=analysis, sysid=sysid, training=training)
-
-    def to_dict(self) -> dict[str, Any]:
-        result: dict[str, Any] = {}
-        for key in ("simulation", "benchmark", "analysis", "sysid", "training"):
-            value = getattr(self, key)
-            if value:
-                result[key] = dict(value)
-        return result
-
-
-_EXPERIMENT_KNOWN_KEYS = {
-    "schema_version", "robot", "outputs", "seeds", "benchmark",
-    "datasets", "actuator_models", "analysis",
-}
-_EXPERIMENT_OUTPUTS_KEYS = {"benchmark", "analysis"}
-_EXPERIMENT_BENCHMARK_KEYS = {"num_envs", "headless"}
-_EXPERIMENT_DATASET_KEYS = {"real_root", "motions"}
-_EXPERIMENT_ACTUATOR_MODEL_KEYS = {
-    "type", "initial_params", "fitted_params", "benchmark_params",
-}
-_EXPERIMENT_ANALYSIS_KEYS = {
-    "seeds", "datasets", "motions", "actuator_models", "plots",
-}
-_EXPERIMENT_ANALYSIS_PLOT_KEYS = {"joints", "end_effector", "require_end_effector"}
-
-
-def _without_none(values: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in values.items() if value is not None}
-
-
-@dataclass(frozen=True)
-class ExperimentOutputs:
-    benchmark: str | None = None
-    analysis: str | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None, context: str) -> "ExperimentOutputs":
-        if data is None:
-            return cls()
-        if not isinstance(data, dict):
-            raise ValueError(f"{context} must be a mapping")
-        unknown = sorted(set(data) - _EXPERIMENT_OUTPUTS_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        return cls(
-            benchmark=str(data["benchmark"]) if "benchmark" in data else None,
-            analysis=str(data["analysis"]) if "analysis" in data else None,
-        )
-
-    def to_dict(self) -> dict[str, str]:
-        return _without_none({"benchmark": self.benchmark, "analysis": self.analysis})
-
-
-@dataclass(frozen=True)
-class ExperimentBenchmark:
-    num_envs: int | None = None
-    headless: bool | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None, context: str) -> "ExperimentBenchmark":
-        if data is None:
-            return cls()
-        if not isinstance(data, dict):
-            raise ValueError(f"{context} must be a mapping")
-        unknown = sorted(set(data) - _EXPERIMENT_BENCHMARK_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        num_envs = int(data["num_envs"]) if "num_envs" in data else None
-        if num_envs is not None and num_envs < 1:
-            raise ValueError(f"{context}.num_envs must be >= 1")
-        headless = data.get("headless")
-        if headless is not None and not isinstance(headless, bool):
-            raise ValueError(f"{context}.headless must be a boolean")
-        return cls(num_envs=num_envs, headless=headless)
-
-    def to_dict(self) -> dict[str, Any]:
-        return _without_none({"num_envs": self.num_envs, "headless": self.headless})
-
-
-@dataclass(frozen=True)
-class ExperimentDataset:
-    real_root: str
-    motions: Any = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any], context: str) -> "ExperimentDataset":
-        if not isinstance(data, dict):
-            raise ValueError(f"{context} must be a mapping")
-        unknown = sorted(set(data) - _EXPERIMENT_DATASET_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        return cls(real_root=str(_require(data, "real_root", context)), motions=data.get("motions"))
-
-    def to_dict(self) -> dict[str, Any]:
-        return _without_none({"real_root": self.real_root, "motions": self.motions})
-
-
-@dataclass(frozen=True)
-class ExperimentActuatorModel:
-    type: str
-    initial_params: str | None = None
-    fitted_params: str | None = None
-    benchmark_params: str = "fitted"
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any], context: str) -> "ExperimentActuatorModel":
-        if "model_type" in data:
-            raise ValueError(f"{context} uses legacy model_type")
-        unknown = sorted(set(data) - _EXPERIMENT_ACTUATOR_MODEL_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        actuator_type = _require(data, "type", context)
-        if actuator_type not in EXPERIMENT_ACTUATOR_TYPES:
-            raise ValueError(
-                f"{context}.type {actuator_type!r} must be one of "
-                f"{sorted(EXPERIMENT_ACTUATOR_TYPES)}"
-            )
-        benchmark_params = str(data.get("benchmark_params", "fitted"))
-        if benchmark_params not in EXPERIMENT_BENCHMARK_PARAMS:
-            raise ValueError(
-                f"{context}.benchmark_params {benchmark_params!r} must be one of "
-                f"{sorted(EXPERIMENT_BENCHMARK_PARAMS)}"
-            )
-        return cls(
-            type=actuator_type,
-            initial_params=data.get("initial_params"),
-            fitted_params=data.get("fitted_params"),
-            benchmark_params=benchmark_params,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return _without_none(
-            {
-                "type": self.type,
-                "initial_params": self.initial_params,
-                "fitted_params": self.fitted_params,
-                "benchmark_params": self.benchmark_params,
-            }
-        )
-
-
-@dataclass(frozen=True)
-class ExperimentAnalysisPlots:
-    joints: bool | None = None
-    end_effector: bool | None = None
-    require_end_effector: bool | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None, context: str) -> "ExperimentAnalysisPlots":
-        if data is None:
-            return cls()
-        if not isinstance(data, dict):
-            raise ValueError(f"{context} must be a mapping")
-        unknown = sorted(set(data) - _EXPERIMENT_ANALYSIS_PLOT_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        for key, value in data.items():
-            if not isinstance(value, bool):
-                raise ValueError(f"{context}.{key} must be a boolean")
-        return cls(
-            joints=data.get("joints"),
-            end_effector=data.get("end_effector"),
-            require_end_effector=data.get("require_end_effector"),
-        )
-
-    def to_dict(self) -> dict[str, bool]:
-        return _without_none(
-            {
-                "joints": self.joints,
-                "end_effector": self.end_effector,
-                "require_end_effector": self.require_end_effector,
-            }
-        )
-
-
-@dataclass(frozen=True)
-class ExperimentAnalysis:
-    seeds: Any = None
-    datasets: Any = None
-    motions: Any = None
-    actuator_models: Any = None
-    plots: ExperimentAnalysisPlots | None = None
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any] | None, context: str) -> "ExperimentAnalysis":
-        if data is None:
-            return cls()
-        if not isinstance(data, dict):
-            raise ValueError(f"{context} must be a mapping")
-        unknown = sorted(set(data) - _EXPERIMENT_ANALYSIS_KEYS)
-        if unknown:
-            raise ValueError(f"{context} has unknown keys: {', '.join(unknown)}")
-        plots = (
-            ExperimentAnalysisPlots.from_dict(data["plots"], f"{context}.plots")
-            if "plots" in data
-            else None
-        )
-        return cls(
-            seeds=data.get("seeds"),
-            datasets=data.get("datasets"),
-            motions=data.get("motions"),
-            actuator_models=data.get("actuator_models"),
-            plots=plots,
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        result = _without_none(
-            {
-                "seeds": self.seeds,
-                "datasets": self.datasets,
-                "motions": self.motions,
-                "actuator_models": self.actuator_models,
-            }
-        )
-        if self.plots is not None:
-            result["plots"] = self.plots.to_dict()
-        return result
-
-
-@dataclass(frozen=True)
-class ExperimentFile:
-    schema_version: int
-    robot: str
-    outputs: ExperimentOutputs
-    seeds: Any
-    benchmark: ExperimentBenchmark
-    datasets: dict[str, ExperimentDataset]
-    actuator_models: dict[str, ExperimentActuatorModel]
-    analysis: ExperimentAnalysis
-
-    @classmethod
-    def from_dict(cls, data: dict[str, Any], source: str | Path) -> "ExperimentFile":
-        text_context = str(source)
-        if not isinstance(data, dict):
-            raise ValueError(f"{text_context} must be a mapping")
-        if "model_type" in data:
-            raise ValueError(f"{text_context} uses legacy model_type")
-        unknown = sorted(set(data) - _EXPERIMENT_KNOWN_KEYS)
-        if unknown:
-            raise ValueError(f"{text_context} has unknown keys: {', '.join(unknown)}")
-        schema_version = int(_require(data, "schema_version", text_context))
-        if schema_version < 1:
-            raise ValueError(f"{text_context} schema_version must be >= 1")
-        robot = str(_require(data, "robot", text_context))
-
-        datasets = data.get("datasets") or {}
-        if not isinstance(datasets, dict) or not datasets:
-            raise ValueError(
-                f"{text_context}.datasets must be a non-empty mapping"
-            )
-        parsed_datasets = {
-            str(name): ExperimentDataset.from_dict(dataset, f"{text_context}.datasets.{name}")
-            for name, dataset in datasets.items()
-        }
-
-        actuator_models = data.get("actuator_models") or {}
-        if not isinstance(actuator_models, dict) or not actuator_models:
-            raise ValueError(
-                f"{text_context}.actuator_models must be a non-empty mapping"
-            )
-        parsed_actuator_models = {
-            str(name): ExperimentActuatorModel.from_dict(
-                model or {}, f"{text_context}.actuator_models.{name}"
-            )
-            for name, model in actuator_models.items()
-        }
-
-        return cls(
-            schema_version=schema_version,
-            robot=robot,
-            outputs=ExperimentOutputs.from_dict(data.get("outputs"), f"{text_context}.outputs"),
-            seeds=data.get("seeds"),
-            benchmark=ExperimentBenchmark.from_dict(data.get("benchmark"), f"{text_context}.benchmark"),
-            datasets=parsed_datasets,
-            actuator_models=parsed_actuator_models,
-            analysis=ExperimentAnalysis.from_dict(data.get("analysis"), f"{text_context}.analysis"),
         )
 
 
@@ -752,3 +367,33 @@ class BenchmarkRunConfig:
     dataset: str | None = None
     actuator_model: str | None = None
     seed: int | None = None
+
+__all__ = [
+    "ActuatorFile",
+    "ActuatorSpec",
+    "AnalysisDefaults",
+    "BenchmarkDefaults",
+    "BenchmarkRunConfig",
+    "BoundsRange",
+    "CMAESConfig",
+    "ClampingSpec",
+    "ConfigSection",
+    "ControllerSpec",
+    "DelaySpec",
+    "ExperimentActuatorModel",
+    "ExperimentAnalysis",
+    "ExperimentAnalysisPlots",
+    "ExperimentBenchmark",
+    "ExperimentDataset",
+    "ExperimentFile",
+    "ExperimentOutputs",
+    "ResidualSpec",
+    "RobotRunFile",
+    "RobotSpec",
+    "SimulationDefaults",
+    "SysIdBoundsFile",
+    "SysIdDefaults",
+    "SysIdRunConfig",
+    "TrainingDefaults",
+    "TrainActuatorRunConfig",
+]

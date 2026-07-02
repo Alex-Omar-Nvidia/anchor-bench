@@ -31,18 +31,18 @@ class ResolvedBenchmarkRunConfig:
 
 def resolve_benchmark_run_config(config: BenchmarkRunConfig) -> ResolvedBenchmarkRunConfig:
     bundle = get_robot(config.robot)
-    benchmark_cfg = bundle.run_config.get("benchmark", {})
-    motion = resolve_required_text(config.motion, benchmark_cfg.get("motion_files"), None, "--motion")
-    output = resolve_required_text(config.output, benchmark_cfg.get("output_folder"), "outputs/sim2real_benchmark", "--output")
+    benchmark_cfg = bundle.run_config.benchmark
+    motion = resolve_required_text(config.motion, benchmark_cfg.motion_files, None, "--motion")
+    output = resolve_required_text(config.output, benchmark_cfg.output_folder, "outputs/sim2real_benchmark", "--output")
     return ResolvedBenchmarkRunConfig(
         robot=config.robot,
         motion=resolve_repo_path_text(motion),
         output=resolve_repo_path_text(output),
         dry_run=config.dry_run,
         headless=config.headless,
-        motion_name=config.motion_name or benchmark_cfg.get("motion_name"),
+        motion_name=config.motion_name or benchmark_cfg.motion_name,
         actuator_params=resolve_repo_path_text(config.actuator_params) if config.actuator_params is not None else None,
-        dataset=config.dataset or benchmark_cfg.get("dataset"),
+        dataset=config.dataset or benchmark_cfg.dataset,
         actuator_model=config.actuator_model,
         seed=config.seed,
     )

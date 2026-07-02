@@ -17,6 +17,7 @@ from anchor_bench.benchmark.init_sync import (
 from anchor_bench.data.sage import load_real_data
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.runtime.assets import resolve_runtime_asset
+from anchor_bench.runtime.simulation import create_newton_scene, joint_ids_for
 from anchor_bench.runtime.so101_config import load_implicit_actuator_params
 from anchor_bench.runtime.so101_scene import (
     apply_static_actuator_params,
@@ -177,23 +178,20 @@ def run_so101_benchmark_batch(
 
         import torch
         import warp as wp
-        from isaaclab.scene import InteractiveScene
-        from isaaclab.sim import SimulationCfg, SimulationContext
-        from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
         bundle = get_robot("so101")
         joint_names = so101_joint_names(bundle)
         run_cfg = bundle.run_config
-        sim_cfg_data = run_cfg.get("simulation", {})
-        benchmark_cfg = run_cfg.get("benchmark", {})
-        real_init_pose_sync = bool(benchmark_cfg.get("real_init_pose_sync", False))
+        sim_cfg_data = run_cfg.simulation
+        benchmark_cfg = run_cfg.benchmark
+        real_init_pose_sync = bool(benchmark_cfg.real_init_pose_sync or False)
         timing = resolve_simulation_timing(sim_cfg_data, "SO-101 benchmark simulation")
         physics_dt = timing.physics_dt
         control_freq = timing.control_freq
         divisor = timing.control_divisor
-        buffer_time = float(benchmark_cfg.get("buffer_time", 0.0))
+        buffer_time = float(benchmark_cfg.buffer_time or 0.0)
         buffer_substeps = _buffer_substeps(buffer_time, timing.control_dt, timing.control_divisor)
-        fix_root = bool(benchmark_cfg.get("fix_root", bundle.spec.fixed_base))
+        fix_root = bool(benchmark_cfg.fix_root if benchmark_cfg.fix_root is not None else bundle.spec.fixed_base)
 
         loaded_motions: list[_LoadedBenchmarkMotion] = []
         for spec in motions:
@@ -221,7 +219,7 @@ def run_so101_benchmark_batch(
         actual_num_envs = batch_size
         configured_batch_size = int(num_envs or batch_size)
 
-        dataset_name = dataset or benchmark_cfg.get("dataset") or benchmark_cfg.get("motion_name", "example")
+        dataset_name = dataset or benchmark_cfg.dataset or benchmark_cfg.motion_name or "example"
         actuator_model_name = actuator_model or "so101_implicit"
         output_root = Path(output)
 
@@ -229,22 +227,10 @@ def run_so101_benchmark_batch(
         usd_path = resolve_runtime_asset(bundle)
         fix_root_override = resolve_fix_root_override(fix_root, bundle.spec.fixed_base)
         SceneCfg = build_scene_class(usd_path, actuator_values, joint_names, fix_root=fix_root_override)
-        sim_cfg = SimulationCfg(dt=physics_dt, render_interval=timing.render_interval, gravity=(0.0, 0.0, -9.81))
-        sim_cfg.physics = NewtonCfg(
-            solver_cfg=MJWarpSolverCfg(
-                integrator=sim_cfg_data.get("integrator", "implicitfast"),
-                ls_iterations=sim_cfg_data.get("ls_iterations", sim_cfg_data.get("line_search_iterations", 10)),
-                iterations=sim_cfg_data.get("solver_iterations", 10),
-            ),
+        sim, scene, robot = create_newton_scene(
+            SceneCfg, sim_cfg_data, timing, num_envs=batch_size
         )
-        sim = SimulationContext(sim_cfg)
-        scene = InteractiveScene(SceneCfg(num_envs=batch_size, env_spacing=4.0))
-        sim.reset()
-        scene.reset()
-        robot = scene["robot"]
-        joint_name_to_idx = {name: i for i, name in enumerate(robot.joint_names)}
-        joint_indices = [joint_name_to_idx[name] for name in joint_names]
-        joint_ids = torch.tensor(joint_indices, dtype=torch.int32, device=robot.device)
+        joint_ids = joint_ids_for(robot, joint_names, torch)
         env_ids = torch.arange(batch_size, dtype=torch.int32, device=robot.device)
         apply_static_actuator_params(robot, actuator_values, joint_ids, env_ids, torch, joint_names)
 

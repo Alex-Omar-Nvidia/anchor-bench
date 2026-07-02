@@ -65,9 +65,9 @@ actuator_models:
 
             loaded = load_experiment_config(config)
 
-            self.assertEqual(1, loaded.benchmark["num_envs"])
-            self.assertEqual("outputs/sim2real_benchmark", loaded.outputs["benchmark"])
-            self.assertEqual("outputs/sim2real_analysis", loaded.outputs["analysis"])
+            self.assertEqual(1, loaded.benchmark.num_envs)
+            self.assertEqual("outputs/sim2real_benchmark", loaded.outputs.benchmark)
+            self.assertEqual("outputs/sim2real_analysis", loaded.outputs.analysis)
 
             config.write_text(
                 f"""
@@ -89,7 +89,7 @@ actuator_models:
 
             loaded = load_experiment_config(config)
 
-            self.assertEqual(2, loaded.benchmark["num_envs"])
+            self.assertEqual(2, loaded.benchmark.num_envs)
 
             config.write_text(
                 f"""
@@ -450,7 +450,7 @@ analysis:
             runs = expand_analysis_runs(loaded)
             plan = build_experiment_analysis_plan(config)
 
-        self.assertTrue(runs[0].plots["require_end_effector"])
+        self.assertTrue(runs[0].plots.require_end_effector)
         self.assertIn("--require-end-effector", plan.runs[0])
 
     def test_experiment_benchmark_cli_dry_run_lists_expanded_runs(self):

@@ -649,7 +649,7 @@ class So101RuntimeTests(unittest.TestCase):
             "configs/robots/example/run.yaml",
         )
 
-        self.assertTrue(run_file.benchmark["real_init_pose_sync"])
+        self.assertTrue(run_file.benchmark.real_init_pose_sync)
 
     def test_benchmark_sample_rows_preserve_motion_timestamps(self):
         from anchor_bench.benchmark.so101_runtime import _append_benchmark_sample, _buffer_substeps

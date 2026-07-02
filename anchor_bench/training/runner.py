@@ -3,12 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from anchor_bench.actuators.loader import load_actuator_file
 from anchor_bench.core.plan import CommandPlan
 from anchor_bench.core.run_config import resolve_repo_path_text, resolve_required_text
-from anchor_bench.core.schemas import TrainActuatorRunConfig
+from anchor_bench.core.schemas import TrainingDefaults, TrainActuatorRunConfig
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.training.data import (
     DEFAULT_INPUT_COLUMNS,
@@ -20,7 +20,8 @@ from anchor_bench.training.data import (
     resolve_training_columns,
     split_csv_files,
 )
-from anchor_bench.training.trainer import ResidualPhysics, TrainingJob, train_stateful_gru
+if TYPE_CHECKING:
+    from anchor_bench.training.trainer import ResidualPhysics
 
 
 @dataclass(frozen=True)
@@ -43,12 +44,18 @@ class ResolvedTrainActuatorRunConfig:
     config_sources: dict[str, str]
 
 
-def _defaulted(explicit: Any, default: Any, fallback: Any) -> Any:
+def _pick_default(
+    explicit: Any,
+    defaults: TrainingDefaults,
+    key: str,
+    fallback: Any,
+) -> tuple[Any, str]:
     if explicit is not None:
-        return explicit
+        return explicit, "cli"
+    default = getattr(defaults, key)
     if default is not None:
-        return default
-    return fallback
+        return default, "run.yaml"
+    return fallback, "fallback"
 
 
 def _positive_int(name: str, value: Any) -> int:
@@ -79,27 +86,45 @@ def _column_list(value: Any) -> list[str] | None:
 
 
 def resolve_train_actuator_run_config(config: TrainActuatorRunConfig) -> ResolvedTrainActuatorRunConfig:
-    bundle = get_robot(config.robot)
-    training_cfg = bundle.run_config.get("training", {})
-    model = str(_defaulted(config.model, training_cfg.get("model"), "gru"))
+    training_cfg = get_robot(config.robot).run_config.training
+    values: dict[str, Any] = {}
+    sources: dict[str, str] = {}
+
+    def select(name: str, explicit: Any, fallback: Any) -> Any:
+        values[name], sources[name] = _pick_default(explicit, training_cfg, name, fallback)
+        return values[name]
+
+    model = str(select("model", config.model, "gru"))
     if model not in MODEL_CHOICES:
         raise ValueError(f"--model {model!r} must be one of {sorted(MODEL_CHOICES)}")
-    data = resolve_required_text(config.data, training_cfg.get("real_data_dir"), None, "--data")
-    output = resolve_required_text(config.output, training_cfg.get("output_dir"), f"outputs/training/{config.robot}", "--output")
-    joint_type = resolve_required_text(config.joint_type, training_cfg.get("joint_type"), "full", "--joint-type")
-    skip_optuna = bool(_defaulted(config.skip_optuna, training_cfg.get("skip_optuna"), True))
-    trials = _positive_int("trials", _defaulted(config.trials, training_cfg.get("trials"), 20))
-    trial_epochs = _positive_int("trial_epochs", _defaulted(config.trial_epochs, training_cfg.get("trial_epochs"), 5))
-    final_epochs = _positive_int("final_epochs", _defaulted(config.final_epochs, training_cfg.get("final_epochs"), 50))
-    n_streams = _positive_int("n_streams", _defaulted(config.n_streams, training_cfg.get("n_streams"), 4))
-    noise_std = _nonnegative_float("noise_std", _defaulted(config.noise_std, training_cfg.get("noise_std"), 0.0))
-    seed = int(_defaulted(config.seed, training_cfg.get("seed"), 42))
-    input_columns = _column_list(_defaulted(config.input_columns, training_cfg.get("input_columns"), DEFAULT_INPUT_COLUMNS))
-    assert input_columns is not None
+
+    data = resolve_required_text(
+        select("real_data_dir", config.data, None),
+        None,
+        None,
+        "--data",
+    )
+    output = resolve_required_text(
+        select("output_dir", config.output, f"outputs/training/{config.robot}"),
+        None,
+        None,
+        "--output",
+    )
+    joint_type = resolve_required_text(
+        select("joint_type", config.joint_type, "full"),
+        None,
+        None,
+        "--joint-type",
+    )
+    input_columns = _column_list(
+        select("input_columns", config.input_columns, DEFAULT_INPUT_COLUMNS)
+    )
+    if input_columns is None:
+        raise ValueError("input_columns must contain at least one column")
     unsupported_columns = sorted(set(input_columns) - SUPPORTED_INPUT_COLUMNS)
     if unsupported_columns:
         raise ValueError(f"unsupported GRU input columns: {', '.join(unsupported_columns)}")
-    target_column = str(_defaulted(config.target_column, training_cfg.get("target_column"), DEFAULT_TARGET_COLUMN))
+
     return ResolvedTrainActuatorRunConfig(
         robot=config.robot,
         model=model,
@@ -107,30 +132,24 @@ def resolve_train_actuator_run_config(config: TrainActuatorRunConfig) -> Resolve
         output=resolve_repo_path_text(output),
         joint_type=str(joint_type),
         dry_run=config.dry_run,
-        skip_optuna=skip_optuna,
-        trials=trials,
-        trial_epochs=trial_epochs,
-        final_epochs=final_epochs,
-        n_streams=n_streams,
-        noise_std=noise_std,
-        seed=seed,
+        skip_optuna=bool(select("skip_optuna", config.skip_optuna, True)),
+        trials=_positive_int("trials", select("trials", config.trials, 20)),
+        trial_epochs=_positive_int(
+            "trial_epochs", select("trial_epochs", config.trial_epochs, 5)
+        ),
+        final_epochs=_positive_int(
+            "final_epochs", select("final_epochs", config.final_epochs, 50)
+        ),
+        n_streams=_positive_int("n_streams", select("n_streams", config.n_streams, 4)),
+        noise_std=_nonnegative_float(
+            "noise_std", select("noise_std", config.noise_std, 0.0)
+        ),
+        seed=int(select("seed", config.seed, 42)),
         input_columns=input_columns,
-        target_column=target_column,
-        config_sources={
-            "model": "cli" if config.model is not None else ("run.yaml" if training_cfg.get("model") is not None else "fallback"),
-            "real_data_dir": "cli" if config.data is not None else "run.yaml",
-            "output_dir": "cli" if config.output is not None else ("run.yaml" if training_cfg.get("output_dir") is not None else "fallback"),
-            "joint_type": "cli" if config.joint_type is not None else ("run.yaml" if training_cfg.get("joint_type") is not None else "fallback"),
-            "skip_optuna": "cli" if config.skip_optuna is not None else ("run.yaml" if training_cfg.get("skip_optuna") is not None else "fallback"),
-            "trials": "cli" if config.trials is not None else ("run.yaml" if training_cfg.get("trials") is not None else "fallback"),
-            "trial_epochs": "cli" if config.trial_epochs is not None else ("run.yaml" if training_cfg.get("trial_epochs") is not None else "fallback"),
-            "final_epochs": "cli" if config.final_epochs is not None else ("run.yaml" if training_cfg.get("final_epochs") is not None else "fallback"),
-            "n_streams": "cli" if config.n_streams is not None else ("run.yaml" if training_cfg.get("n_streams") is not None else "fallback"),
-            "noise_std": "cli" if config.noise_std is not None else ("run.yaml" if training_cfg.get("noise_std") is not None else "fallback"),
-            "seed": "cli" if config.seed is not None else ("run.yaml" if training_cfg.get("seed") is not None else "fallback"),
-            "input_columns": "cli" if config.input_columns is not None else ("run.yaml" if training_cfg.get("input_columns") is not None else "fallback"),
-            "target_column": "cli" if config.target_column is not None else ("run.yaml" if training_cfg.get("target_column") is not None else "fallback"),
-        },
+        target_column=str(
+            select("target_column", config.target_column, DEFAULT_TARGET_COLUMN)
+        ),
+        config_sources=sources,
     )
 
 
@@ -201,7 +220,9 @@ def _param_for_joint(value: Any, joint_type: str, default: float = 0.0) -> float
     return float(value)
 
 
-def _residual_physics_for_joint(robot: str, joint_type: str) -> ResidualPhysics:
+def _residual_physics_for_joint(robot: str, joint_type: str) -> "ResidualPhysics":
+    from anchor_bench.training.trainer import ResidualPhysics
+
     bundle = get_robot(robot)
     spec = load_actuator_file(bundle.paths.actuators)
     matching = [actuator for actuator in spec.actuators if joint_type in actuator.joints or actuator.name == joint_type]
@@ -224,6 +245,9 @@ def run_train_actuator(config: TrainActuatorRunConfig) -> CommandPlan:
     resolved = resolve_train_actuator_run_config(config)
     if resolved.dry_run:
         return plan
+
+    from anchor_bench.training.trainer import TrainingJob, train_stateful_gru
+
     csvs = discover_csv_files(resolved.data)
     train_csvs, val_csvs = split_csv_files(csvs, seed=resolved.seed)
     derived_columns = ["solver_pd"] if resolved.model == "hybrid_residual" else []

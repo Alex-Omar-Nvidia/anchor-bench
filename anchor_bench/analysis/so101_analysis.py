@@ -9,7 +9,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, cast
 
 import numpy as np
 
@@ -561,9 +561,9 @@ class IsaacLabNewtonSo101Fk:
         try:
             bundle = get_robot("so101")
             run_cfg = bundle.run_config
-            sim_cfg_data = run_cfg.get("simulation", {})
+            sim_cfg_data = run_cfg.simulation
             timing = resolve_simulation_timing(sim_cfg_data, "SO-101 analysis FK simulation")
-            fix_root = bool(run_cfg.get("benchmark", {}).get("fix_root", bundle.spec.fixed_base))
+            fix_root = (run_cfg.benchmark.fix_root if run_cfg.benchmark.fix_root is not None else bundle.spec.fixed_base)
             actuator_values = load_implicit_actuator_params(bundle, None)
             usd_path = resolve_runtime_asset(bundle)
             fix_root_override = resolve_fix_root_override(fix_root, bundle.spec.fixed_base)
@@ -573,9 +573,9 @@ class IsaacLabNewtonSo101Fk:
             sim_cfg = SimulationCfg(dt=timing.physics_dt, render_interval=timing.render_interval, gravity=(0.0, 0.0, -9.81))
             sim_cfg.physics = NewtonCfg(
                 solver_cfg=MJWarpSolverCfg(
-                    integrator=sim_cfg_data.get("integrator", "implicitfast"),
-                    ls_iterations=sim_cfg_data.get("ls_iterations", sim_cfg_data.get("line_search_iterations", 10)),
-                    iterations=sim_cfg_data.get("solver_iterations", 10),
+                    integrator=sim_cfg_data.integrator or "implicitfast",
+                    ls_iterations=sim_cfg_data.ls_iterations or sim_cfg_data.line_search_iterations or 10,
+                    iterations=sim_cfg_data.solver_iterations or 10,
                 ),
             )
             self._sim = SimulationContext(sim_cfg)
@@ -639,6 +639,197 @@ def _warn(message: str) -> None:
     print(f"warning: {message}", file=sys.stderr)
 
 
+def _metric_rows() -> tuple[list[list[str]], list[list[str]]]:
+    joint_rows = [[
+        "dataset", "motion", "actuator_model", "seed", "joint",
+        "position_rmse", "velocity_rmse", "torque_rmse",
+        "position_correlation", "velocity_correlation", "torque_correlation",
+        "position_cosine_similarity", "velocity_cosine_similarity", "torque_cosine_similarity",
+    ]]
+    end_effector_rows = [[
+        "dataset", "motion", "actuator_model", "seed",
+        "rmse_x_m", "rmse_y_m", "rmse_z_m", "rmse_dist_m", "max_err_m", "duration_s",
+    ]]
+    return joint_rows, end_effector_rows
+
+
+def _group_sim_runs(sim_runs: list[SimRun]) -> dict[tuple[int | None, str, str], list[SimRun]]:
+    groups: dict[tuple[int | None, str, str], list[SimRun]] = {}
+    for run in sim_runs:
+        groups.setdefault((run.seed, run.dataset, run.motion), []).append(run)
+    return groups
+
+
+def _group_sort_key(item: tuple[tuple[int | None, str, str], list[SimRun]]) -> tuple[bool, int, str, str]:
+    seed, dataset, motion = item[0]
+    return seed is not None, seed or -1, dataset, motion
+
+
+def _load_analysis_group(
+    result_root: Path,
+    key: tuple[int | None, str, str],
+    runs: list[SimRun],
+    sample_dt: float | None,
+) -> tuple[SageTrace, list[tuple[SimRun, SageTrace]], list[str]] | None:
+    seed, dataset, _motion = key
+    real_folder = _real_folder(result_root, seed, dataset, runs[0].motion_rel)
+    if not (real_folder / "state_motor.csv").exists():
+        return None
+    real_trace = _read_trace(real_folder, sample_dt=sample_dt)
+    sim_traces = [
+        (run, _read_trace(run.folder, sample_dt=sample_dt))
+        for run in sorted(runs, key=lambda item: item.actuator_model)
+    ]
+    joints = [
+        joint
+        for joint in real_trace.joint_names
+        if any(joint in trace.joint_names for _, trace in sim_traces)
+    ]
+    return real_trace, sim_traces, joints
+
+
+def _compare_joint_group(
+    rows: list[list[str]],
+    key: tuple[int | None, str, str],
+    real_trace: SageTrace,
+    sim_traces: list[tuple[SimRun, SageTrace]],
+    joints: list[str],
+) -> dict[str, list[JointOverlay]]:
+    seed, dataset, motion = key
+    seed_text = "" if seed is None else str(seed)
+    overlays: dict[str, list[JointOverlay]] = {joint: [] for joint in joints}
+    for run, sim_trace in sim_traces:
+        for joint in joints:
+            if joint not in sim_trace.joint_names:
+                continue
+            sim_idx = sim_trace.joint_names.index(joint)
+            real_idx = real_trace.joint_names.index(joint)
+            comparisons = [
+                _compare_signal(sim_trace.state_time, sim_values[:, sim_idx], real_trace.state_time, real_values[:, real_idx])
+                for sim_values, real_values in (
+                    (sim_trace.positions, real_trace.positions),
+                    (sim_trace.velocities, real_trace.velocities),
+                    (sim_trace.torques, real_trace.torques),
+                )
+            ]
+            position, velocity, torque = comparisons
+            rows.append([
+                dataset, motion, run.actuator_model, seed_text, joint,
+                _format_metric(position.rmse), _format_metric(velocity.rmse), _format_metric(torque.rmse),
+                _format_metric(position.correlation), _format_metric(velocity.correlation), _format_metric(torque.correlation),
+                _format_metric(position.cosine_similarity),
+                _format_metric(velocity.cosine_similarity),
+                _format_metric(torque.cosine_similarity),
+            ])
+            overlays[joint].append(
+                JointOverlay(
+                    actuator_model=run.actuator_model,
+                    trace=sim_trace,
+                    sim_joint_idx=sim_idx,
+                    position=position,
+                    velocity=velocity,
+                    torque=torque,
+                )
+            )
+    return overlays
+
+
+def _plot_joint_group(
+    plt,
+    output_root: Path,
+    key: tuple[int | None, str, str],
+    real_trace: SageTrace,
+    overlays: dict[str, list[JointOverlay]],
+) -> None:
+    seed, dataset, motion = key
+    group_dir = _group_plot_dir(output_root, seed, dataset, motion)
+    for joint, joint_overlays in overlays.items():
+        if joint_overlays:
+            _plot_joint_overlay(
+                plt,
+                group_dir / "joints" / f"{_safe_name(joint)}.png",
+                dataset,
+                motion,
+                joint,
+                real_trace,
+                real_trace.joint_names.index(joint),
+                joint_overlays,
+            )
+
+
+def _compare_end_effector_group(
+    rows: list[list[str]],
+    plt,
+    output_root: Path,
+    key: tuple[int | None, str, str],
+    real_trace: SageTrace,
+    sim_traces: list[tuple[SimRun, SageTrace]],
+    fk: EndEffectorFk,
+) -> None:
+    seed, dataset, motion = key
+    real_xyz = np.asarray(fk(real_trace.joint_names, real_trace.positions), dtype=float)
+    comparisons: list[EndEffectorComparison] = []
+    for run, sim_trace in sim_traces:
+        sim_xyz = np.asarray(fk(sim_trace.joint_names, sim_trace.positions), dtype=float)
+        comparison = _compare_ee(
+            run.actuator_model,
+            sim_trace.state_time,
+            sim_xyz,
+            real_trace.state_time,
+            real_xyz,
+        )
+        comparisons.append(comparison)
+        rows.append([
+            dataset, motion, run.actuator_model, "" if seed is None else str(seed),
+            _format_metric(float(comparison.rmse_xyz[0])),
+            _format_metric(float(comparison.rmse_xyz[1])),
+            _format_metric(float(comparison.rmse_xyz[2])),
+            _format_metric(comparison.rmse_dist),
+            _format_metric(comparison.max_err),
+            _format_metric(comparison.duration),
+        ])
+    if plt is not None:
+        _plot_ee_overlay(
+            plt,
+            _group_plot_dir(output_root, seed, dataset, motion) / "end_effector.png",
+            dataset,
+            motion,
+            real_xyz,
+            comparisons,
+        )
+
+
+def _resolve_end_effector_fk(
+    enabled: bool,
+    required: bool,
+    ee_fk: EndEffectorFk | object,
+) -> tuple[EndEffectorFk | None, Callable[[], None] | None]:
+    if not enabled:
+        return None, None
+    try:
+        fk = cast(EndEffectorFk, _default_ee_fk() if ee_fk is _DEFAULT_EE_FK else ee_fk)
+        return fk, getattr(fk, "close", None)
+    except EndEffectorFkUnavailable as exc:
+        if required:
+            raise
+        _warn(f"skipping SO101 end-effector analysis: {exc}")
+        return None, None
+
+
+def _write_analysis_metrics(
+    metrics_dir: Path,
+    joint_rows: list[list[str]],
+    end_effector_rows: list[list[str]],
+) -> Path:
+    metrics_path = metrics_dir / "so101_metrics.csv"
+    with metrics_path.open("w", newline="", encoding="utf-8") as stream:
+        csv.writer(stream).writerows(joint_rows)
+    if len(end_effector_rows) > 1:
+        with (metrics_dir / "so101_end_effector_metrics.csv").open("w", newline="", encoding="utf-8") as stream:
+            csv.writer(stream).writerows(end_effector_rows)
+    return metrics_path
+
+
 def run_so101_analysis(
     result_folder: str | Path,
     output: str | Path,
@@ -656,184 +847,44 @@ def run_so101_analysis(
     output_root = Path(output)
     metrics_dir = output_root / "metrics"
     metrics_dir.mkdir(parents=True, exist_ok=True)
-    metrics_path = metrics_dir / "so101_metrics.csv"
     plt = _load_pyplot() if make_joint_plots or make_end_effector_plots else None
-
-    rows: list[list[str]] = [
-        [
-            "dataset",
-            "motion",
-            "actuator_model",
-            "seed",
-            "joint",
-            "position_rmse",
-            "velocity_rmse",
-            "torque_rmse",
-            "position_correlation",
-            "velocity_correlation",
-            "torque_correlation",
-            "position_cosine_similarity",
-            "velocity_cosine_similarity",
-            "torque_cosine_similarity",
-        ]
-    ]
-    ee_rows: list[list[str]] = [
-        [
-            "dataset",
-            "motion",
-            "actuator_model",
-            "seed",
-            "rmse_x_m",
-            "rmse_y_m",
-            "rmse_z_m",
-            "rmse_dist_m",
-            "max_err_m",
-            "duration_s",
-        ]
-    ]
-
-    sim_runs = _scan_sim_runs(result_root, datasets, motions, actuator_models, seeds)
-    groups: dict[tuple[int | None, str, str], list[SimRun]] = {}
-    for run in sim_runs:
-        groups.setdefault((run.seed, run.dataset, run.motion), []).append(run)
-
-    fk: EndEffectorFk | None = None
-    close_fk = None
-    if make_end_effector_plots:
-        try:
-            fk = _default_ee_fk() if ee_fk is _DEFAULT_EE_FK else ee_fk  # type: ignore[assignment]
-            close_fk = getattr(fk, "close", None)
-        except EndEffectorFkUnavailable as exc:
-            if require_end_effector:
-                raise
-            _warn(f"skipping SO101 end-effector analysis: {exc}")
-            fk = None
+    joint_rows, end_effector_rows = _metric_rows()
+    groups = _group_sim_runs(
+        _scan_sim_runs(result_root, datasets, motions, actuator_models, seeds)
+    )
+    fk, close_fk = _resolve_end_effector_fk(
+        make_end_effector_plots,
+        require_end_effector,
+        ee_fk,
+    )
 
     try:
-        for (seed, dataset, motion), runs in sorted(groups.items(), key=lambda item: (item[0][0] is not None, item[0][0] or -1, item[0][1], item[0][2])):
-            motion_rel = runs[0].motion_rel
-            real_folder = _real_folder(result_root, seed, dataset, motion_rel)
-            if not (real_folder / "state_motor.csv").exists():
+        for key, runs in sorted(groups.items(), key=_group_sort_key):
+            loaded = _load_analysis_group(result_root, key, runs, sample_dt)
+            if loaded is None:
                 continue
-            real_trace = _read_trace(real_folder, sample_dt=sample_dt)
-            sim_traces = [(run, _read_trace(run.folder, sample_dt=sample_dt)) for run in sorted(runs, key=lambda item: item.actuator_model)]
-            joints = [joint for joint in real_trace.joint_names if any(joint in trace.joint_names for _, trace in sim_traces)]
-            joint_overlays: dict[str, list[JointOverlay]] = {joint: [] for joint in joints}
-
-            for run, sim_trace in sim_traces:
-                seed_text = "" if seed is None else str(seed)
-                for joint in joints:
-                    if joint not in sim_trace.joint_names:
-                        continue
-                    sim_idx = sim_trace.joint_names.index(joint)
-                    real_idx = real_trace.joint_names.index(joint)
-                    position = _compare_signal(
-                        sim_trace.state_time,
-                        sim_trace.positions[:, sim_idx],
-                        real_trace.state_time,
-                        real_trace.positions[:, real_idx],
-                    )
-                    velocity = _compare_signal(
-                        sim_trace.state_time,
-                        sim_trace.velocities[:, sim_idx],
-                        real_trace.state_time,
-                        real_trace.velocities[:, real_idx],
-                    )
-                    torque = _compare_signal(
-                        sim_trace.state_time,
-                        sim_trace.torques[:, sim_idx],
-                        real_trace.state_time,
-                        real_trace.torques[:, real_idx],
-                    )
-                    rows.append(
-                        [
-                            dataset,
-                            motion,
-                            run.actuator_model,
-                            seed_text,
-                            joint,
-                            _format_metric(position.rmse),
-                            _format_metric(velocity.rmse),
-                            _format_metric(torque.rmse),
-                            _format_metric(position.correlation),
-                            _format_metric(velocity.correlation),
-                            _format_metric(torque.correlation),
-                            _format_metric(position.cosine_similarity),
-                            _format_metric(velocity.cosine_similarity),
-                            _format_metric(torque.cosine_similarity),
-                        ]
-                    )
-                    joint_overlays[joint].append(
-                        JointOverlay(
-                            actuator_model=run.actuator_model,
-                            trace=sim_trace,
-                            sim_joint_idx=sim_idx,
-                            position=position,
-                            velocity=velocity,
-                            torque=torque,
-                        )
-                    )
-
+            real_trace, sim_traces, joints = loaded
+            overlays = _compare_joint_group(joint_rows, key, real_trace, sim_traces, joints)
             if plt is not None and make_joint_plots:
-                group_dir = _group_plot_dir(output_root, seed, dataset, motion)
-                for joint, overlays in joint_overlays.items():
-                    if not overlays:
-                        continue
-                    _plot_joint_overlay(
-                        plt,
-                        group_dir / "joints" / f"{_safe_name(joint)}.png",
-                        dataset,
-                        motion,
-                        joint,
-                        real_trace,
-                        real_trace.joint_names.index(joint),
-                        overlays,
-                    )
-
-            if fk is not None and make_end_effector_plots:
+                _plot_joint_group(plt, output_root, key, real_trace, overlays)
+            if fk is not None:
                 try:
-                    real_xyz = np.asarray(fk(real_trace.joint_names, real_trace.positions), dtype=float)
-                    comparisons: list[EndEffectorComparison] = []
-                    for run, sim_trace in sim_traces:
-                        sim_xyz = np.asarray(fk(sim_trace.joint_names, sim_trace.positions), dtype=float)
-                        comparison = _compare_ee(run.actuator_model, sim_trace.state_time, sim_xyz, real_trace.state_time, real_xyz)
-                        comparisons.append(comparison)
-                        ee_rows.append(
-                            [
-                                dataset,
-                                motion,
-                                run.actuator_model,
-                                "" if seed is None else str(seed),
-                                _format_metric(float(comparison.rmse_xyz[0])),
-                                _format_metric(float(comparison.rmse_xyz[1])),
-                                _format_metric(float(comparison.rmse_xyz[2])),
-                                _format_metric(comparison.rmse_dist),
-                                _format_metric(comparison.max_err),
-                                _format_metric(comparison.duration),
-                            ]
-                        )
-                    if plt is not None:
-                        _plot_ee_overlay(
-                            plt,
-                            _group_plot_dir(output_root, seed, dataset, motion) / "end_effector.png",
-                            dataset,
-                            motion,
-                            real_xyz,
-                            comparisons,
-                        )
+                    _compare_end_effector_group(
+                        end_effector_rows,
+                        plt,
+                        output_root,
+                        key,
+                        real_trace,
+                        sim_traces,
+                        fk,
+                    )
                 except EndEffectorFkUnavailable as exc:
                     if require_end_effector:
                         raise
+                    _, dataset, motion = key
                     _warn(f"skipping SO101 end-effector analysis for {dataset}/{motion}: {exc}")
                     fk = None
-        with metrics_path.open("w", newline="", encoding="utf-8") as stream:
-            writer = csv.writer(stream)
-            writer.writerows(rows)
-        if len(ee_rows) > 1:
-            with (metrics_dir / "so101_end_effector_metrics.csv").open("w", newline="", encoding="utf-8") as stream:
-                writer = csv.writer(stream)
-                writer.writerows(ee_rows)
-        return metrics_path
+        return _write_analysis_metrics(metrics_dir, joint_rows, end_effector_rows)
     finally:
         if close_fk is not None:
             close_fk()

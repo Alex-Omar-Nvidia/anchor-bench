@@ -133,10 +133,24 @@ class NativeActuatorSchemaTests(unittest.TestCase):
             "run.yaml",
         )
 
-        self.assertEqual(run.sysid["num_envs"], 64)
-        self.assertEqual(run.sysid["cmaes"]["sigma"], 0.25)
-        self.assertEqual(run.sysid["cmaes"]["max_iterations"], 30)
-        self.assertEqual(run.sysid["cmaes"]["epsilon"], 0.001)
+        self.assertEqual(run.sysid.num_envs, 64)
+        self.assertEqual(run.sysid.cmaes.sigma, 0.25)
+        self.assertEqual(run.sysid.cmaes.max_iterations, 30)
+        self.assertEqual(run.sysid.cmaes.epsilon, 0.001)
+        self.assertEqual(
+            {
+                "sysid": {
+                    "num_envs": 64,
+                    "buffer_time": 2.0,
+                    "cmaes": {
+                        "sigma": 0.25,
+                        "max_iterations": 30,
+                        "epsilon": 0.001,
+                    },
+                }
+            },
+            run.to_dict(),
+        )
 
     def test_simulation_timing_derives_dependent_values(self):
         from anchor_bench.core.run_config import SimulationTiming, defaulted_value
@@ -182,10 +196,10 @@ class NativeActuatorSchemaTests(unittest.TestCase):
             "run.yaml",
         )
 
-        self.assertEqual("hybrid_residual", run.training["model"])
-        self.assertEqual("outputs/training/demo", run.training["output_dir"])
-        self.assertTrue(run.training["skip_optuna"])
-        self.assertEqual(4, run.training["n_streams"])
+        self.assertEqual("hybrid_residual", run.training.model)
+        self.assertEqual("outputs/training/demo", run.training.output_dir)
+        self.assertTrue(run.training.skip_optuna)
+        self.assertEqual(4, run.training.n_streams)
 
     def test_robot_run_schema_rejects_unknown_training_keys(self):
         from anchor_bench.core.schemas import RobotRunFile
@@ -409,8 +423,8 @@ class NativeActuatorSchemaTests(unittest.TestCase):
 
         bundle = get_robot("so101")
 
-        self.assertEqual(100, bundle.run_config["sysid"]["cmaes"]["max_iterations"])
-        self.assertNotIn("max_iter", bundle.run_config["sysid"])
+        self.assertEqual(100, bundle.run_config.sysid.cmaes.max_iterations)
+        self.assertNotIn("max_iter", bundle.run_config.sysid)
 
     def test_bounds_configs_do_not_contain_cmaes_policy(self):
         for path in (repo_root() / "configs" / "robots").glob("*/bounds.yaml"):

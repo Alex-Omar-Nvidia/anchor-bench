@@ -24,24 +24,42 @@ class ResolvedSysIdRunConfig:
     config_sources: dict[str, str]
 
 
+def _config_source(
+    explicit: object,
+    configured: object,
+    *,
+    configured_label: str = "run.yaml",
+    fallback: str = "fallback",
+) -> str:
+    if explicit is not None:
+        return "cli"
+    return configured_label if configured is not None else fallback
+
+
 def resolve_sysid_run_config(config: SysIdRunConfig) -> ResolvedSysIdRunConfig:
     bundle = get_robot(config.robot)
-    sysid_cfg = bundle.run_config.get("sysid", {})
-    cmaes_cfg = CMAESConfig.from_dict(sysid_cfg.get("cmaes"), f"{bundle.paths.run}.sysid.cmaes")
-    data = resolve_required_text(config.data, sysid_cfg.get("real_data_dir"), None, "--data")
-    output = resolve_required_text(config.output, sysid_cfg.get("output_dir"), f"outputs/sysid/{config.robot}", "--output")
-    num_envs = sysid_cfg.get("num_envs") if config.num_envs is None else config.num_envs
+    sysid_cfg = bundle.run_config.sysid
+    cmaes_cfg = sysid_cfg.cmaes or CMAESConfig()
+    data = resolve_required_text(config.data, sysid_cfg.real_data_dir, None, "--data")
+    output = resolve_required_text(config.output, sysid_cfg.output_dir, f"outputs/sysid/{config.robot}", "--output")
+    num_envs = sysid_cfg.num_envs if config.num_envs is None else config.num_envs
     max_iter = cmaes_cfg.max_iterations if config.max_iter is None else config.max_iter
     config_sources = {
-        "real_data_dir": "cli" if config.data is not None else "run.yaml",
-        "output_dir": "cli" if config.output is not None else ("run.yaml" if sysid_cfg.get("output_dir") is not None else "fallback"),
-        "num_envs": "cli" if config.num_envs is not None else ("run.yaml" if sysid_cfg.get("num_envs") is not None else "fallback"),
-        "max_iter": "cli" if config.max_iter is not None else "run.yaml.sysid.cmaes.max_iterations",
-        "max_trajectory_len": "cli" if config.max_trajectory_len is not None else "unset",
-        "seed": "cli" if config.seed is not None else "default",
-        "joints": "run.yaml" if sysid_cfg.get("joints") is not None else "fallback",
-        "buffer_time": "run.yaml" if sysid_cfg.get("buffer_time") is not None else "fallback",
-        "cmaes": "run.yaml" if sysid_cfg.get("cmaes") is not None else "fallback",
+        "real_data_dir": _config_source(config.data, sysid_cfg.real_data_dir),
+        "output_dir": _config_source(config.output, sysid_cfg.output_dir),
+        "num_envs": _config_source(config.num_envs, sysid_cfg.num_envs),
+        "max_iter": _config_source(
+            config.max_iter,
+            cmaes_cfg.max_iterations,
+            configured_label="run.yaml.sysid.cmaes.max_iterations",
+        ),
+        "max_trajectory_len": _config_source(
+            config.max_trajectory_len, None, fallback="unset"
+        ),
+        "seed": _config_source(config.seed, None, fallback="default"),
+        "joints": _config_source(None, sysid_cfg.joints),
+        "buffer_time": _config_source(None, sysid_cfg.buffer_time),
+        "cmaes": _config_source(None, sysid_cfg.cmaes),
     }
     return ResolvedSysIdRunConfig(
         robot=config.robot,

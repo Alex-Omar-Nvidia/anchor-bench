@@ -10,11 +10,12 @@ from typing import Any
 import yaml
 
 from anchor_bench.core.run_config import resolve_simulation_timing
-from anchor_bench.core.schemas import CMAESConfig, SysIdBoundsFile
+from anchor_bench.core.schemas import CMAESConfig, RobotRunFile, SysIdBoundsFile
 from anchor_bench.data.sage import load_real_data
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.runtime.assets import resolve_runtime_asset
 from anchor_bench.runtime.so101_config import build_implicit_actuator_params, load_sysid_bounds
+from anchor_bench.runtime.simulation import create_newton_scene, joint_ids_for
 from anchor_bench.runtime.so101_scene import (
     _write_viscous_friction,
     build_scene_class,
@@ -31,11 +32,11 @@ def _log(message: str) -> None:
     print(f"[SYSID] {message}", flush=True)
 
 
-def _write_summary(output: Path, run_cfg: dict[str, Any], bounds: SysIdBoundsFile, actuator_params: dict[str, Any], args: dict[str, Any]) -> None:
+def _write_summary(output: Path, run_cfg: RobotRunFile, bounds: SysIdBoundsFile, actuator_params: dict[str, Any], args: dict[str, Any]) -> None:
     summary = {
         "run_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "robot_name": "so101",
-        "simulation": run_cfg.get("simulation", {}),
+        "simulation": run_cfg.simulation.to_dict(),
         "sysid": args,
         "bounds": {
             "parameters": {name: {"lower": r.lower, "upper": r.upper} for name, r in bounds.parameters.items()},
@@ -101,14 +102,14 @@ def run_so101_sysid(
 
     bundle = get_robot("so101")
     run_cfg = bundle.run_config
-    sim_cfg_data = run_cfg.get("simulation", {})
-    sysid_cfg = run_cfg.get("sysid", {})
-    joint_names = _resolve_sysid_joint_names(bundle, sysid_cfg.get("joints", "full"))
+    sim_cfg_data = run_cfg.simulation
+    sysid_cfg = run_cfg.sysid
+    joint_names = _resolve_sysid_joint_names(bundle, sysid_cfg.joints or "full")
     all_joint_names = so101_joint_names(bundle)
     bounds = replace(load_sysid_bounds(bundle), joint_types=joint_names)
-    cmaes_cfg = CMAESConfig.from_dict(sysid_cfg.get("cmaes"), f"{bundle.paths.run}.sysid.cmaes")
+    cmaes_cfg = sysid_cfg.cmaes or CMAESConfig()
 
-    num_envs = _resolve_positive_int("num_envs", num_envs, sysid_cfg.get("num_envs", 64))
+    num_envs = _resolve_positive_int("num_envs", num_envs, sysid_cfg.num_envs or 64)
     max_iter = _resolve_positive_int("max_iter", max_iter, cmaes_cfg.max_iterations)
     max_trajectory_len = _resolve_optional_positive_int("max_trajectory_len", max_trajectory_len)
     seed = int(seed if seed is not None else 0)
@@ -118,7 +119,7 @@ def run_so101_sysid(
     physics_dt = timing.physics_dt
     control_dt = timing.control_dt
     divisor = timing.control_divisor
-    buffer_time = float(sysid_cfg.get("buffer_time", 0.0))
+    buffer_time = float(sysid_cfg.buffer_time or 0.0)
     if buffer_time < 0.0:
         raise ValueError("sysid.buffer_time must be >= 0")
 
@@ -128,9 +129,6 @@ def run_so101_sysid(
 
         import torch
         import warp as wp
-        from isaaclab.scene import InteractiveScene
-        from isaaclab.sim import SimulationCfg, SimulationContext
-        from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 
         output_path = Path(output)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -153,24 +151,12 @@ def run_so101_sysid(
         SceneCfg = build_scene_class(usd_path, actuator_params, all_joint_names)
         _log(f"Using USD asset: {usd_path}")
 
-        sim_cfg = SimulationCfg(dt=physics_dt, render_interval=timing.render_interval, gravity=(0.0, 0.0, -9.81))
-        sim_cfg.physics = NewtonCfg(
-            solver_cfg=MJWarpSolverCfg(
-                integrator=sim_cfg_data.get("integrator", "implicitfast"),
-                ls_iterations=sim_cfg_data.get("ls_iterations", sim_cfg_data.get("line_search_iterations", 10)),
-                iterations=sim_cfg_data.get("solver_iterations", 10),
-            )
+        sim, scene, robot = create_newton_scene(
+            SceneCfg, sim_cfg_data, timing, num_envs=num_envs
         )
-        sim = SimulationContext(sim_cfg)
-        scene = InteractiveScene(SceneCfg(num_envs=num_envs, env_spacing=4.0))
-        sim.reset()
-        scene.reset()
-        robot = scene["robot"]
         joint_pos_template = torch.zeros((num_envs, len(robot.joint_names)), dtype=torch.float32, device=robot.device)
         joint_vel_template = torch.zeros_like(joint_pos_template)
-        joint_name_to_idx = {name: i for i, name in enumerate(robot.joint_names)}
-        joint_indices = [joint_name_to_idx[name] for name in joint_names]
-        joint_ids = torch.tensor(joint_indices, dtype=torch.int32, device=robot.device)
+        joint_ids = joint_ids_for(robot, joint_names, torch)
         joint_ids_long = joint_ids.long()
         env_ids = torch.arange(num_envs, dtype=torch.int32, device=robot.device)
         commands_t = torch.tensor(commands, dtype=torch.float32, device=robot.device)

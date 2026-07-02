@@ -12,6 +12,28 @@ def _test_label(test: unittest.case.TestCase) -> str:
     return test_id() if callable(test_id) else str(test)
 
 
+class _PlainProgress:
+    """No-op progress adapter used when tqdm is not installed."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def __enter__(self) -> "_PlainProgress":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        return None
+
+    def update(self, value: int) -> None:
+        pass
+
+    def set_description_str(self, value: str, refresh: bool = True) -> None:
+        pass
+
+    def set_postfix_str(self, value: str, refresh: bool = True) -> None:
+        pass
+
+
 class TqdmTextTestResult(unittest.TextTestResult):
     def __init__(self, *args: Any, progress: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
@@ -81,11 +103,8 @@ def load_suite(
 def _default_tqdm_factory() -> Callable[..., Any]:
     try:
         from tqdm.auto import tqdm
-    except ModuleNotFoundError as exc:
-        raise SystemExit(
-            "tqdm is required for the progress test runner. "
-            "Run tests inside the Anchor Bench container with `./setup.sh --shell python3 scripts/run_unit_tests.py`."
-        ) from exc
+    except ModuleNotFoundError:
+        return _PlainProgress
     return tqdm
 
 
@@ -114,7 +133,7 @@ def run_suite(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run unittest suites with a tqdm progress bar.")
+    parser = argparse.ArgumentParser(description="Run unittest suites with an optional progress bar.")
     parser.add_argument("tests", nargs="*", help="Optional unittest module, class, or method names.")
     parser.add_argument("-s", "--start-directory", default="tests", help="Directory to discover tests from.")
     parser.add_argument("-p", "--pattern", default="test*.py", help="Discovery filename pattern.")

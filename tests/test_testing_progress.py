@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import io
 import unittest
+from unittest.mock import patch
 
-from anchor_bench.testing import run_suite
+from anchor_bench.testing import _PlainProgress, _default_tqdm_factory, run_suite
 
 
 class _FakeProgress:
@@ -43,6 +44,10 @@ class _PassingTests(unittest.TestCase):
 
 
 class ProgressUnitTestRunnerTests(unittest.TestCase):
+    def test_missing_tqdm_falls_back_to_plain_progress(self):
+        with patch.dict("sys.modules", {"tqdm": None, "tqdm.auto": None}):
+            self.assertIs(_default_tqdm_factory(), _PlainProgress)
+
     def test_progress_updates_once_per_test_case(self):
         _FakeProgress.instances = []
         suite = unittest.defaultTestLoader.loadTestsFromTestCase(_PassingTests)

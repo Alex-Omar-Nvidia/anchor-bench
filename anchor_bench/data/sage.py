@@ -9,6 +9,7 @@ from typing import Any
 
 import numpy as np
 import yaml
+from anchor_bench.data.validation import validate_sage_dir
 
 
 @dataclass(frozen=True)
@@ -118,24 +119,6 @@ def _interpolate_positions(timestamps: list[float], positions: list[list[float]]
     matrix = np.column_stack(columns) if columns else np.empty((len(target_times), 0), dtype=float)
     return [[float(round(value, 12)) for value in row] for row in matrix.tolist()]
 
-
-def validate_sage_dir(data_dir: str | Path) -> dict[str, Any]:
-    root = Path(data_dir)
-    required = ["control.csv", "state_motor.csv", "joint_list.txt", "metadata.yaml"]
-    missing = [name for name in required if not (root / name).exists()]
-    if missing:
-        raise FileNotFoundError(f"{root} missing required SAGE files: {', '.join(missing)}")
-    metadata = yaml.safe_load((root / "metadata.yaml").read_text(encoding="utf-8")) or {}
-    expected = {
-        "time_unit": {"microseconds", "seconds"},
-        "position_unit": {"rad"},
-        "velocity_unit": {"rad/s"},
-        "torque_unit": {"N*m", "Nm"},
-    }
-    for key, allowed in expected.items():
-        if metadata.get(key) not in allowed:
-            raise ValueError(f"metadata.yaml {key} must be one of {sorted(allowed)}")
-    return metadata
 
 
 def load_initial_state(data_dir: str | Path, joint_names: list[str] | None = None) -> SageInitialState:
