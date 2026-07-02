@@ -24,6 +24,28 @@ def run_cli(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
 
 
 class So101RuntimeTests(unittest.TestCase):
+    def test_to_torch_accepts_isaac_lab_proxy_array(self):
+        from anchor_bench.runtime.so101_scene import to_torch
+
+        class FakeTensor:
+            pass
+
+        class FakeWarp:
+            class array:
+                pass
+
+            @staticmethod
+            def to_torch(value):
+                raise AssertionError("ProxyArray should use its explicit .torch accessor")
+
+        tensor = FakeTensor()
+        proxy = SimpleNamespace(torch=tensor)
+        fake_torch = ModuleType("torch")
+        fake_torch.Tensor = FakeTensor
+
+        with patch.dict(sys.modules, {"torch": fake_torch}):
+            self.assertIs(to_torch(proxy, FakeWarp), tensor)
+
     def test_actuator_file_converts_to_isaac_implicit_params(self):
         from anchor_bench.runtime.so101_config import build_implicit_actuator_params
         from anchor_bench.robots.registry import get_robot
@@ -307,7 +329,7 @@ class So101RuntimeTests(unittest.TestCase):
             output = Path(tmp)
             _write_summary(
                 output,
-                run_cfg={},
+                run_cfg=get_robot("so101").run_config,
                 bounds=load_sysid_bounds(get_robot("so101")),
                 actuator_params={"stiffness": {"Rotation": 1.0}},
                 args={"num_envs": 1, "config_sources": {"num_envs": "cli"}},

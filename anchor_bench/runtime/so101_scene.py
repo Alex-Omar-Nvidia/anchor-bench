@@ -17,18 +17,20 @@ def so101_joint_names(bundle: Any) -> list[str]:
 
 
 def to_torch(value: Any, wp: Any) -> Any:
-    """Return a torch tensor: convert warp arrays, pass through torch tensors, else raise.
-
-    The previous version silently returned non-``wp.array`` inputs unchanged, so a
-    surprise type would slip through instead of failing fast.
-    """
+    """Return a torch tensor from supported Warp, Isaac Lab, or Torch arrays."""
     if isinstance(value, wp.array):
         return wp.to_torch(value)
     import torch  # noqa: PLC0415 - runtime-only; callers already run in the full Isaac runtime
 
     if isinstance(value, torch.Tensor):
         return value
-    raise TypeError(f"to_torch expected a warp.array or torch.Tensor, got {type(value).__name__}")
+    proxy_tensor = getattr(value, "torch", None)
+    if isinstance(proxy_tensor, torch.Tensor):
+        return proxy_tensor
+    raise TypeError(
+        "to_torch expected a warp.array, Isaac Lab ProxyArray, or torch.Tensor, "
+        f"got {type(value).__name__}"
+    )
 
 
 def _joint_ids_to_list(joint_ids: Any) -> list[int]:
