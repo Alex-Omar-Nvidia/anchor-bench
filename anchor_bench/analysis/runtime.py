@@ -894,15 +894,3 @@ def run_robot_analysis(
     finally:
         if close_fk is not None:
             close_fk()
-
-
-class IsaacLabNewtonSo101Fk(IsaacLabNewtonRobotFk):
-    """Compatibility FK adapter retaining the former SO-101 constructor."""
-
-    def __init__(self, ee_frame: str = "jaw", batch_size: int = 512) -> None:
-        super().__init__("so101", ee_frame=ee_frame, batch_size=batch_size)
-
-
-def run_so101_analysis(*args, **kwargs):
-    """Compatibility wrapper for callers using the former entry point."""
-    return run_robot_analysis("so101", *args, **kwargs)

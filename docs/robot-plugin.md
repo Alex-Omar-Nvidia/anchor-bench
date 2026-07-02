@@ -300,19 +300,20 @@ under `outputs/`.
 ## Runtime Support
 
 Host-safe registration and dry-run planning work for any robot with valid
-config files. Full simulation execution currently needs robot-specific runtime
-support:
+config files. Full simulation execution uses the shared robot-parameterized
+runtime:
 
 - SysID dispatch lives in `anchor_bench/sysid/runner.py`.
 - Benchmark dispatch lives in `anchor_bench/benchmark/newton_runner.py`.
 - Analysis dispatch lives in `anchor_bench/analysis/runner.py`.
-- SO-101 runtime implementation is split across `anchor_bench/sysid/so101_runtime.py`,
-  `anchor_bench/benchmark/so101_runtime.py`, and
-  `anchor_bench/analysis/so101_analysis.py`.
+- Runtime implementation is split across `anchor_bench/sysid/runtime.py`,
+  `anchor_bench/benchmark/runtime.py`, and
+  `anchor_bench/analysis/runtime.py`.
 
-When adding a new robot runtime, keep heavy Isaac Sim, Isaac Lab, and Newton
-imports inside the non-dry-run path. Dry-run tests should continue to run on a
-host-only Python.
+New robots should not add robot-named runtime modules. Declare the robot under
+`configs/robots/<robot>/`; the current runtime requires a runtime USD and one
+PD actuator group. Keep heavy Isaac Sim, Isaac Lab, and Newton imports inside
+the non-dry-run path so dry-run tests continue to work on host-only Python.
 
 The runtime should derive joint names from `get_robot("<robot>").spec.joint_names`
 instead of hardcoding them. Use those names consistently for scene construction,

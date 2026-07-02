@@ -163,7 +163,7 @@ Host-safe contract test:
 Adjacent coverage:
 
 ```bash
-./setup.sh --shell python3 scripts/run_unit_tests.py tests.test_experiments tests.test_so101_runtime tests.test_cli_dry_run
+./setup.sh --shell python3 scripts/run_unit_tests.py tests.test_experiments tests.test_runtime_workflows tests.test_cli_dry_run
 ```
 
 Default container suite, with the runtime smoke discovered but skipped:
@@ -194,7 +194,7 @@ HEADLESS=1 ./setup.sh --shell env \
 | `tests/test_registry.py` | Robot registry discovery, configured robot bundles, and invalid robot diagnostics. | Host-safe unit |
 | `tests/test_runtime_pipeline.py` | Opt-in actual SO-101 SysID optimization -> benchmark replay -> FK analysis smoke in full runtime. | Full runtime opt-in |
 | `tests/test_sage.py` | SAGE loader ordering, initial-state extraction, timestamp scaling, interpolation, and validation errors. | Host-safe unit |
-| `tests/test_so101_runtime.py` | SO-101 runtime helpers, asset preflights, optimizer behavior, benchmark row/layout helpers, and analysis behavior with fakes. | Host-safe unit |
+| `tests/test_runtime_workflows.py` | runtime workflow helpers, asset preflights, optimizer behavior, benchmark row/layout helpers, and analysis behavior with fakes. | Host-safe unit |
 | `tests/test_testing_progress.py` | Progress-bar unittest runner accounting. | Host-safe unit |
 | `tests/test_training.py` | Training data discovery/columns/stats plus optional tiny GRU training and TorchScript export smoke. | Host-safe with optional torch |
 | `tests/test_versions.py` | Compatibility manifest pins for Isaac Sim, Isaac Lab, and Newton. | Host-safe unit |

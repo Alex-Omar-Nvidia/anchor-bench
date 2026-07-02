@@ -32,7 +32,7 @@ def _log(message: str) -> None:
     print(f"[SYSID] {message}", flush=True)
 
 
-def _write_summary(output: Path, run_cfg: RobotRunFile, bounds: SysIdBoundsFile, actuator_params: dict[str, Any], args: dict[str, Any], robot_name: str = "so101") -> None:
+def _write_summary(output: Path, run_cfg: RobotRunFile, bounds: SysIdBoundsFile, actuator_params: dict[str, Any], args: dict[str, Any], robot_name: str) -> None:
     summary = {
         "run_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "robot_name": robot_name,

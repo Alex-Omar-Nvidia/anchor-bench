@@ -128,7 +128,7 @@ class PipelineContractTests(unittest.TestCase):
     def test_sysid_fitted_params_flow_through_benchmark_and_analysis(self):
         from anchor_bench.experiments.runner import run_experiment_analysis, run_experiment_benchmark
         from anchor_bench.robots.registry import get_robot
-        from anchor_bench.runtime.so101_config import load_implicit_actuator_params
+        from anchor_bench.runtime.robot_config import load_implicit_actuator_params
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -167,7 +167,7 @@ class PipelineContractTests(unittest.TestCase):
                 motion="custom_motion",
             )
 
-            with patch("anchor_bench.analysis.so101_analysis._load_pyplot") as load_pyplot:
+            with patch("anchor_bench.analysis.runtime._load_pyplot") as load_pyplot:
                 metrics_plan = run_experiment_analysis(config, dry_run=False)
                 load_pyplot.assert_not_called()
 

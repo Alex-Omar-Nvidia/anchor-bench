@@ -109,8 +109,8 @@ def _build_run_summary(
     env_index: int,
     actuator_values: dict[str, Any],
     actuator_params: str | None,
+    robot_name: str,
     real_init_pose_sync: bool = False,
-    robot_name: str = "so101",
 ) -> dict[str, Any]:
     return {
         "robot_name": robot_name,

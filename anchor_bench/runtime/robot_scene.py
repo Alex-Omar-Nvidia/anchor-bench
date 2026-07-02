@@ -8,7 +8,6 @@ def resolve_fix_root_override(configured: bool, asset_fixed_base: bool) -> bool 
     """Only override the USD root mode when configuration requests a real change."""
     return None if configured == asset_fixed_base else configured
 
-
 def robot_joint_names(bundle: Any) -> list[str]:
     joint_names = list(bundle.spec.joint_names)
     if not joint_names:
@@ -16,7 +15,6 @@ def robot_joint_names(bundle: Any) -> list[str]:
     return joint_names
 
 
-so101_joint_names = robot_joint_names
 
 
 def to_torch(value: Any, wp: Any) -> Any:
