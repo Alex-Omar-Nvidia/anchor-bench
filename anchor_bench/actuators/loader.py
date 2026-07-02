@@ -148,7 +148,7 @@ def _author_pd_actuator(stage: Any, articulation_prim_path: str, actuator, joint
     )
 
 
-GRU_RUNTIME_SHIM_MESSAGE = (
+_GRU_RUNTIME_SHIM_MESSAGE = (
     "GRU actuators are not Newton-native in this Newton/IsaacLab snapshot; "
     "use anchor_bench.runtime.actuator_net_gru for full-torque GRU and GRU residual runtime support."
 )
@@ -158,7 +158,7 @@ def _ensure_newton_native_supported(spec: ActuatorFile) -> None:
     for actuator in spec.actuators:
         has_gru_residual = actuator.residual is not None and actuator.residual.type == "gru"
         if actuator.controller.type == "gru" or has_gru_residual:
-            raise RuntimeError(GRU_RUNTIME_SHIM_MESSAGE)
+            raise RuntimeError(_GRU_RUNTIME_SHIM_MESSAGE)
 
 
 def author_newton_actuator_prims(spec: ActuatorFile, *, stage: Any, articulation_prim_path: str) -> None:

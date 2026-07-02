@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from anchor_bench.core.plan import CommandPlan
 from anchor_bench.core.run_config import resolve_repo_path_text, resolve_required_text
 from anchor_bench.core.schemas import BenchmarkRunConfig
+from anchor_bench.core.versions import load_external_versions
 from anchor_bench.robots.registry import get_robot
 
 
@@ -69,12 +70,13 @@ def build_benchmark_command(config: BenchmarkRunConfig) -> CommandPlan:
         command.extend(["--actuator-params", resolved.actuator_params])
     if resolved.dry_run:
         command.append("--dry-run")
+    newton_version = load_external_versions().newton_version
     return CommandPlan(
         workflow="benchmark",
         robot=resolved.robot,
         command=command,
         dry_run=resolved.dry_run,
-        notes=["uses Newton 1.2 composable actuator descriptions from configs/robots"],
+        notes=[f"uses Newton {newton_version} composable actuator descriptions from configs/robots"],
     )
 
 

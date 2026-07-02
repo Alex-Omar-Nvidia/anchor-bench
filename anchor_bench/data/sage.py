@@ -63,11 +63,10 @@ def _load_rows(path: Path, vector_column: str) -> tuple[list[float], list[list[f
 
 
 def _select_joints(vectors: list[list[float]], source_joints: list[str], requested_joints: list[str]) -> list[list[float]]:
-    indices = []
-    for joint in requested_joints:
-        if joint not in source_joints:
-            raise ValueError(f"joint '{joint}' not found in joint_list.txt")
-        indices.append(source_joints.index(joint))
+    missing = [joint for joint in requested_joints if joint not in source_joints]
+    if missing:
+        raise ValueError(f"joints not found in joint_list.txt: {', '.join(missing)}")
+    indices = [source_joints.index(joint) for joint in requested_joints]
     return [[row[idx] for idx in indices] for row in vectors]
 
 

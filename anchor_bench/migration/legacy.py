@@ -52,7 +52,10 @@ def migrate_legacy_actuator_config(
         },
     }
     if model_type == "hybrid_residual":
-        actuator["residual"] = {"type": "gru", "network_files": legacy.get("network_files", {})}
+        # ResidualSpec uses a single ``network_file`` (see core/schemas.py); emit that
+        # key so a migrated hybrid_residual config loads instead of failing on an
+        # unknown ``network_files`` key.
+        actuator["residual"] = {"type": "gru", "network_file": legacy.get("network_file")}
     if "network_file" in legacy:
         actuator["controller"]["network_file"] = legacy["network_file"]
     if "fmu_path" in legacy:

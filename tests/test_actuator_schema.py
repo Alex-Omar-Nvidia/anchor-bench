@@ -454,6 +454,29 @@ class NativeActuatorSchemaTests(unittest.TestCase):
         self.assertEqual({"Rotation": 0.25}, physical["dry_friction"])
         self.assertNotIn("dynamic_friction", physical)
 
+    def test_legacy_migration_hybrid_residual_emits_loadable_residual(self):
+        from anchor_bench.core.schemas import ResidualSpec
+        from anchor_bench.migration.legacy import migrate_legacy_actuator_config
+
+        migrated = migrate_legacy_actuator_config(
+            {
+                "model_type": "hybrid_residual",
+                "network_file": "so101/residual_gru.pt",
+                "parameters": {"stiffness": 4.0, "damping": 0.1},
+            },
+            robot_name="so101",
+            joint_names=["Rotation"],
+        )
+        residual = migrated["actuators"][0]["residual"]
+        # The residual must use the singular ``network_file`` key from ResidualSpec,
+        # not a plural ``network_files`` that would fail to load.
+        self.assertNotIn("network_files", residual)
+        self.assertEqual(residual["network_file"], "so101/residual_gru.pt")
+        # And the migrated residual block must round-trip through the schema.
+        parsed = ResidualSpec.from_dict(residual, "migrated.residual")
+        self.assertEqual(parsed.type, "gru")
+        self.assertEqual(parsed.network_file, "so101/residual_gru.pt")
+
 
 if __name__ == "__main__":
     unittest.main()
