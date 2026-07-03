@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 import csv
@@ -127,12 +126,11 @@ class TrainingRunnerTests(unittest.TestCase):
         from anchor_bench.core.schemas import TrainActuatorRunConfig
         from anchor_bench.training.runner import resolve_train_actuator_run_config
 
-        resolved = resolve_train_actuator_run_config(
-            TrainActuatorRunConfig(robot="so101", dry_run=True)
-        )
+        resolved = resolve_train_actuator_run_config(TrainActuatorRunConfig(robot="so101", dry_run=True))
 
         self.assertEqual("so101", resolved.robot)
         self.assertEqual("gru", resolved.model)
+        self.assertTrue(resolved.data.endswith("custom_figure8_with_camera"))
         self.assertTrue(resolved.output.endswith("outputs/training/so101"))
         self.assertEqual("full", resolved.joint_type)
         self.assertTrue(resolved.skip_optuna)

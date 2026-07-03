@@ -7,8 +7,9 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT))
 
-from anchor_bench.testing import main
 
 
 if __name__ == "__main__":
+    from anchor_bench.testing import main
+
     raise SystemExit(main())

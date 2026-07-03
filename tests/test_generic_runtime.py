@@ -98,3 +98,26 @@ class GenericRuntimeTests(unittest.TestCase):
                 dry_run=False,
             )
         self.assertEqual("ur10e", analysis.call_args.args[0])
+
+    def test_public_runners_resolve_configuration_once(self):
+        import anchor_bench.analysis.runner as analysis_runner
+        import anchor_bench.benchmark.newton_runner as benchmark_runner
+        from anchor_bench.core.schemas import BenchmarkRunConfig, SysIdRunConfig, TrainActuatorRunConfig
+        import anchor_bench.sysid.runner as sysid_runner
+        import anchor_bench.training.runner as training_runner
+
+        with patch.object(sysid_runner, "resolve_sysid_run_config", wraps=sysid_runner.resolve_sysid_run_config) as resolver:
+            sysid_runner.run_sysid(SysIdRunConfig(robot="so101", dry_run=True))
+        resolver.assert_called_once()
+
+        with patch.object(benchmark_runner, "resolve_benchmark_run_config", wraps=benchmark_runner.resolve_benchmark_run_config) as resolver:
+            benchmark_runner.run_benchmark(BenchmarkRunConfig(robot="so101", dry_run=True))
+        resolver.assert_called_once()
+
+        with patch.object(training_runner, "resolve_train_actuator_run_config", wraps=training_runner.resolve_train_actuator_run_config) as resolver:
+            training_runner.run_train_actuator(TrainActuatorRunConfig(robot="so101", dry_run=True))
+        resolver.assert_called_once()
+
+        with patch.object(analysis_runner, "resolve_analysis_run_config", wraps=analysis_runner.resolve_analysis_run_config) as resolver:
+            analysis_runner.run_analysis("so101", dry_run=True)
+        resolver.assert_called_once()

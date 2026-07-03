@@ -6,7 +6,10 @@ from pathlib import Path
 
 import yaml
 
-from anchor_bench.benchmark.newton_runner import build_benchmark_command
+from anchor_bench.benchmark.newton_runner import (
+    ResolvedBenchmarkRunConfig,
+    build_resolved_benchmark_command,
+)
 from anchor_bench.core.experiment_schema import (
     AnalysisSelector,
     ExperimentActuatorModel,
@@ -15,7 +18,6 @@ from anchor_bench.core.experiment_schema import (
 )
 from anchor_bench.core.paths import repo_root
 from anchor_bench.core.plan import CommandPlan
-from anchor_bench.core.schemas import BenchmarkRunConfig
 from anchor_bench.data.validation import validate_sage_dir
 from anchor_bench.robots.registry import get_robot
 
@@ -356,7 +358,7 @@ def expand_benchmark_batches(
 
 
 def _benchmark_command_for_run(run: ExperimentBenchmarkRun, dry_run: bool) -> list[str]:
-    return build_benchmark_command(BenchmarkRunConfig(
+    return build_resolved_benchmark_command(ResolvedBenchmarkRunConfig(
         robot=run.robot,
         motion=run.motion,
         output=run.output,
@@ -370,10 +372,13 @@ def _benchmark_command_for_run(run: ExperimentBenchmarkRun, dry_run: bool) -> li
     )).command
 
 
-def build_experiment_benchmark_plan(config_path: str | Path, dry_run: bool = True) -> CommandPlan:
-    config = load_experiment_config(config_path)
-    warnings: list[str] = []
-    runs = expand_benchmark_runs(config, dry_run=dry_run, warnings=warnings)
+def _build_experiment_benchmark_plan(
+    config_path: str | Path,
+    config: ResolvedExperimentConfig,
+    runs: list[ExperimentBenchmarkRun],
+    warnings: list[str],
+    dry_run: bool,
+) -> CommandPlan:
     batches = _batch_benchmark_runs(config, runs)
     command = ["anchor-bench", "experiment", "benchmark", str(Path(config_path))]
     if dry_run:
@@ -399,12 +404,21 @@ def build_experiment_benchmark_plan(config_path: str | Path, dry_run: bool = Tru
     )
 
 
+def build_experiment_benchmark_plan(config_path: str | Path, dry_run: bool = True) -> CommandPlan:
+    config = load_experiment_config(config_path)
+    warnings: list[str] = []
+    runs = expand_benchmark_runs(config, dry_run=dry_run, warnings=warnings)
+    return _build_experiment_benchmark_plan(config_path, config, runs, warnings, dry_run)
+
+
 def run_experiment_benchmark(config_path: str | Path, dry_run: bool = True) -> CommandPlan:
     config = load_experiment_config(config_path)
-    plan = build_experiment_benchmark_plan(config_path, dry_run=dry_run)
+    warnings: list[str] = []
+    runs = expand_benchmark_runs(config, dry_run=dry_run, warnings=warnings)
+    plan = _build_experiment_benchmark_plan(config_path, config, runs, warnings, dry_run)
     if dry_run:
         return plan
-    batches = expand_benchmark_batches(config, dry_run=False)
+    batches = _batch_benchmark_runs(config, runs)
     from anchor_bench.benchmark.newton_runner import BenchmarkMotion, run_benchmark_batch
 
     for batch in batches:
@@ -497,9 +511,12 @@ def _analysis_command_for_run(run: ExperimentAnalysisRun, dry_run: bool) -> list
     return command
 
 
-def build_experiment_analysis_plan(config_path: str | Path, dry_run: bool = True) -> CommandPlan:
-    config = load_experiment_config(config_path)
-    runs = expand_analysis_runs(config)
+def _build_experiment_analysis_plan(
+    config_path: str | Path,
+    config: ResolvedExperimentConfig,
+    runs: list[ExperimentAnalysisRun],
+    dry_run: bool,
+) -> CommandPlan:
     command = ["anchor-bench", "experiment", "analyze", str(Path(config_path))]
     if dry_run:
         command.append("--dry-run")
@@ -519,10 +536,16 @@ def build_experiment_analysis_plan(config_path: str | Path, dry_run: bool = True
     )
 
 
+def build_experiment_analysis_plan(config_path: str | Path, dry_run: bool = True) -> CommandPlan:
+    config = load_experiment_config(config_path)
+    runs = expand_analysis_runs(config)
+    return _build_experiment_analysis_plan(config_path, config, runs, dry_run)
+
+
 def run_experiment_analysis(config_path: str | Path, dry_run: bool = True) -> CommandPlan:
     config = load_experiment_config(config_path)
     runs = expand_analysis_runs(config)
-    plan = build_experiment_analysis_plan(config_path, dry_run=dry_run)
+    plan = _build_experiment_analysis_plan(config_path, config, runs, dry_run)
     if dry_run:
         return plan
     from anchor_bench.analysis.runtime import run_robot_analysis

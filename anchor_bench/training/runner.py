@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,6 +19,7 @@ from anchor_bench.training.data import (
     resolve_training_columns,
     split_csv_files,
 )
+
 if TYPE_CHECKING:
     from anchor_bench.training.trainer import ResidualPhysics
 
@@ -116,9 +116,7 @@ def resolve_train_actuator_run_config(config: TrainActuatorRunConfig) -> Resolve
         None,
         "--joint-type",
     )
-    input_columns = _column_list(
-        select("input_columns", config.input_columns, DEFAULT_INPUT_COLUMNS)
-    )
+    input_columns = _column_list(select("input_columns", config.input_columns, DEFAULT_INPUT_COLUMNS))
     if input_columns is None:
         raise ValueError("input_columns must contain at least one column")
     unsupported_columns = sorted(set(input_columns) - SUPPORTED_INPUT_COLUMNS)
@@ -134,41 +132,47 @@ def resolve_train_actuator_run_config(config: TrainActuatorRunConfig) -> Resolve
         dry_run=config.dry_run,
         skip_optuna=bool(select("skip_optuna", config.skip_optuna, True)),
         trials=_positive_int("trials", select("trials", config.trials, 20)),
-        trial_epochs=_positive_int(
-            "trial_epochs", select("trial_epochs", config.trial_epochs, 5)
-        ),
-        final_epochs=_positive_int(
-            "final_epochs", select("final_epochs", config.final_epochs, 50)
-        ),
+        trial_epochs=_positive_int("trial_epochs", select("trial_epochs", config.trial_epochs, 5)),
+        final_epochs=_positive_int("final_epochs", select("final_epochs", config.final_epochs, 50)),
         n_streams=_positive_int("n_streams", select("n_streams", config.n_streams, 4)),
-        noise_std=_nonnegative_float(
-            "noise_std", select("noise_std", config.noise_std, 0.0)
-        ),
+        noise_std=_nonnegative_float("noise_std", select("noise_std", config.noise_std, 0.0)),
         seed=int(select("seed", config.seed, 42)),
         input_columns=input_columns,
-        target_column=str(
-            select("target_column", config.target_column, DEFAULT_TARGET_COLUMN)
-        ),
+        target_column=str(select("target_column", config.target_column, DEFAULT_TARGET_COLUMN)),
         config_sources=sources,
     )
 
 
 def _command_from_resolved(resolved: ResolvedTrainActuatorRunConfig) -> list[str]:
     command = [
-        "anchor-bench", "train-actuator",
-        "--robot", resolved.robot,
-        "--model", resolved.model,
-        "--data", resolved.data,
-        "--joint-type", resolved.joint_type,
-        "--output", resolved.output,
-        "--trials", str(resolved.trials),
-        "--trial-epochs", str(resolved.trial_epochs),
-        "--final-epochs", str(resolved.final_epochs),
-        "--n-streams", str(resolved.n_streams),
-        "--noise-std", str(resolved.noise_std),
-        "--seed", str(resolved.seed),
-        "--input-columns", ",".join(resolved.input_columns),
-        "--target-column", resolved.target_column,
+        "anchor-bench",
+        "train-actuator",
+        "--robot",
+        resolved.robot,
+        "--model",
+        resolved.model,
+        "--data",
+        resolved.data,
+        "--joint-type",
+        resolved.joint_type,
+        "--output",
+        resolved.output,
+        "--trials",
+        str(resolved.trials),
+        "--trial-epochs",
+        str(resolved.trial_epochs),
+        "--final-epochs",
+        str(resolved.final_epochs),
+        "--n-streams",
+        str(resolved.n_streams),
+        "--noise-std",
+        str(resolved.noise_std),
+        "--seed",
+        str(resolved.seed),
+        "--input-columns",
+        ",".join(resolved.input_columns),
+        "--target-column",
+        resolved.target_column,
     ]
     if resolved.skip_optuna:
         command.append("--skip-optuna")
@@ -177,8 +181,7 @@ def _command_from_resolved(resolved: ResolvedTrainActuatorRunConfig) -> list[str
     return command
 
 
-def build_train_actuator_command(config: TrainActuatorRunConfig) -> CommandPlan:
-    resolved = resolve_train_actuator_run_config(config)
+def build_resolved_train_actuator_command(resolved: ResolvedTrainActuatorRunConfig) -> CommandPlan:
     notes = [
         "trains a stateful TBPTT GRU actuator model with torch/pandas imported only during execution",
         f"generated checkpoints and stats should stay under outputs/training/{resolved.robot}/ by convention",
@@ -240,9 +243,8 @@ def _residual_physics_for_joint(robot: str, joint_type: str) -> "ResidualPhysics
     )
 
 
-def run_train_actuator(config: TrainActuatorRunConfig) -> CommandPlan:
-    plan = build_train_actuator_command(config)
-    resolved = resolve_train_actuator_run_config(config)
+def run_resolved_train_actuator(resolved: ResolvedTrainActuatorRunConfig) -> CommandPlan:
+    plan = build_resolved_train_actuator_command(resolved)
     if resolved.dry_run:
         return plan
 
@@ -258,7 +260,11 @@ def run_train_actuator(config: TrainActuatorRunConfig) -> CommandPlan:
         target_column=resolved.target_column,
         derived_columns=derived_columns,
     )
-    residual_physics = _residual_physics_for_joint(resolved.robot, resolved.joint_type) if resolved.model == "hybrid_residual" else None
+    residual_physics = (
+        _residual_physics_for_joint(resolved.robot, resolved.joint_type)
+        if resolved.model == "hybrid_residual"
+        else None
+    )
     metadata: dict[str, Any] = {
         "robot": resolved.robot,
         "config_sources": resolved.config_sources,
@@ -303,3 +309,11 @@ def run_train_actuator(config: TrainActuatorRunConfig) -> CommandPlan:
         notes=plan.notes,
         metadata=extra_metadata,
     )
+
+
+def build_train_actuator_command(config: TrainActuatorRunConfig) -> CommandPlan:
+    return build_resolved_train_actuator_command(resolve_train_actuator_run_config(config))
+
+
+def run_train_actuator(config: TrainActuatorRunConfig) -> CommandPlan:
+    return run_resolved_train_actuator(resolve_train_actuator_run_config(config))

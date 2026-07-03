@@ -48,8 +48,7 @@ def resolve_benchmark_run_config(config: BenchmarkRunConfig) -> ResolvedBenchmar
     )
 
 
-def build_benchmark_command(config: BenchmarkRunConfig) -> CommandPlan:
-    resolved = resolve_benchmark_run_config(config)
+def build_resolved_benchmark_command(resolved: ResolvedBenchmarkRunConfig) -> CommandPlan:
     command = [
         "anchor-bench", "benchmark",
         "--robot", resolved.robot,
@@ -80,9 +79,13 @@ def build_benchmark_command(config: BenchmarkRunConfig) -> CommandPlan:
     )
 
 
-def run_benchmark(config: BenchmarkRunConfig) -> CommandPlan:
-    plan = build_benchmark_command(config)
+def build_benchmark_command(config: BenchmarkRunConfig) -> CommandPlan:
     resolved = resolve_benchmark_run_config(config)
+    return build_resolved_benchmark_command(resolved)
+
+
+def run_resolved_benchmark(resolved: ResolvedBenchmarkRunConfig) -> CommandPlan:
+    plan = build_resolved_benchmark_command(resolved)
     if resolved.dry_run:
         return plan
     run_benchmark_batch(
@@ -99,6 +102,10 @@ def run_benchmark(config: BenchmarkRunConfig) -> CommandPlan:
         batch_index=0,
     )
     return plan
+
+
+def run_benchmark(config: BenchmarkRunConfig) -> CommandPlan:
+    return run_resolved_benchmark(resolve_benchmark_run_config(config))
 
 
 def run_benchmark_batch(

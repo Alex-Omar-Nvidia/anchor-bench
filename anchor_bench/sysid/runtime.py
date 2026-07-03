@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections import deque
 import csv
-from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -107,7 +106,7 @@ def run_robot_sysid(
     sysid_cfg = run_cfg.sysid
     joint_names = _resolve_sysid_joint_names(bundle, sysid_cfg.joints or "full")
     all_joint_names = robot_joint_names(bundle)
-    bounds = replace(load_sysid_bounds(bundle), joint_types=joint_names)
+    bounds = load_sysid_bounds(bundle).model_copy(update={"joint_types": joint_names})
     cmaes_cfg = sysid_cfg.cmaes or CMAESConfig()
 
     num_envs = _resolve_positive_int("num_envs", num_envs, sysid_cfg.num_envs or 64)

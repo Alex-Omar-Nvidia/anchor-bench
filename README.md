@@ -40,9 +40,19 @@ SO-101 includes `assets/robots/so101/files/so101.usd` for quick checks. Set
 `ANCHOR_BENCH_ASSET_DIR` only when you want to override it with your own USD
 assets.
 
+The default motion comes from NVIDIA's
+[Anchor-Lab SO-101 figure-eight parquet](https://huggingface.co/datasets/nvidia/Anchor-Lab/blob/main/data/so101_arm_50motion/so101-sysid-50motion-train-figure-eight.parquet).
+Prepare its ignored local SAGE conversion once before the first run:
+
 ```bash
 # Open container
 ./setup.sh --shell
+
+# Download, verify, and convert the default figure-eight dataset
+python scripts/prepare_so101_figure_eight.py
+
+# Optional: validate one epoch of real-data actuator training
+anchor-bench train-actuator --robot so101 --final-epochs 1 --skip-optuna
 
 # SysID
 anchor-bench sysid \

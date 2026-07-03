@@ -54,6 +54,28 @@ def _selector_to_cli_values(value: str | list[str] | None) -> list[str]:
     return [str(value)]
 
 
+def build_resolved_analysis_command(resolved: ResolvedAnalysisRunConfig) -> CommandPlan:
+    command = ["anchor-bench", "analyze", "--robot", resolved.robot, "--result-folder", resolved.result_folder, "--output", resolved.output]
+    for motion in _selector_to_cli_values(resolved.motion_names):
+        command.extend(["--motion", motion])
+    if resolved.require_end_effector:
+        command.append("--require-end-effector")
+    if resolved.dry_run:
+        command.append("--dry-run")
+    metadata = {
+        "sample_dt": resolved.sample_dt,
+        "motion_names": resolved.motion_names,
+    }
+    return CommandPlan(
+        workflow="analysis",
+        robot=resolved.robot,
+        command=command,
+        dry_run=resolved.dry_run,
+        notes=["analysis adapters stay host-safe until plotting dependencies are installed"],
+        metadata=metadata,
+    )
+
+
 def build_analysis_command(
     robot: str,
     result_folder: str | None = None,
@@ -70,51 +92,11 @@ def build_analysis_command(
         require_end_effector=require_end_effector,
         motions=motions,
     )
-    command = ["anchor-bench", "analyze", "--robot", resolved.robot, "--result-folder", resolved.result_folder, "--output", resolved.output]
-    for motion in _selector_to_cli_values(resolved.motion_names):
-        command.extend(["--motion", motion])
-    if require_end_effector:
-        command.append("--require-end-effector")
-    if dry_run:
-        command.append("--dry-run")
-    metadata = {
-        "sample_dt": resolved.sample_dt,
-        "motion_names": resolved.motion_names,
-    }
-    return CommandPlan(
-        workflow="analysis",
-        robot=resolved.robot,
-        command=command,
-        dry_run=resolved.dry_run,
-        notes=["analysis adapters stay host-safe until plotting dependencies are installed"],
-        metadata=metadata,
-    )
+    return build_resolved_analysis_command(resolved)
 
 
-def run_analysis(
-    robot: str,
-    result_folder: str | None = None,
-    output: str | None = None,
-    dry_run: bool = True,
-    require_end_effector: bool = False,
-    motions: str | list[str] | None = None,
-) -> CommandPlan:
-    plan = build_analysis_command(
-        robot,
-        result_folder,
-        output,
-        dry_run=dry_run,
-        require_end_effector=require_end_effector,
-        motions=motions,
-    )
-    resolved = resolve_analysis_run_config(
-        robot,
-        result_folder=result_folder,
-        output=output,
-        dry_run=dry_run,
-        require_end_effector=require_end_effector,
-        motions=motions,
-    )
+def run_resolved_analysis(resolved: ResolvedAnalysisRunConfig) -> CommandPlan:
+    plan = build_resolved_analysis_command(resolved)
     if resolved.dry_run:
         return plan
     from anchor_bench.analysis.runtime import run_robot_analysis
@@ -135,3 +117,22 @@ def run_analysis(
         sample_dt=resolved.sample_dt,
     )
     return plan
+
+
+def run_analysis(
+    robot: str,
+    result_folder: str | None = None,
+    output: str | None = None,
+    dry_run: bool = True,
+    require_end_effector: bool = False,
+    motions: str | list[str] | None = None,
+) -> CommandPlan:
+    resolved = resolve_analysis_run_config(
+        robot,
+        result_folder=result_folder,
+        output=output,
+        dry_run=dry_run,
+        require_end_effector=require_end_effector,
+        motions=motions,
+    )
+    return run_resolved_analysis(resolved)

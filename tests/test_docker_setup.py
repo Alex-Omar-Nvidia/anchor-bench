@@ -1,6 +1,5 @@
 import os
 import subprocess
-import sys
 import unittest
 from pathlib import Path
 
@@ -40,6 +39,7 @@ class DockerSetupTests(unittest.TestCase):
         self.assertIn("does not create a host .venv", result.stdout)
 
     def test_kitless_dry_run_builds_docker_image_without_host_venv(self):
+        venv_existed = (REPO / ".venv").exists()
         result = run_setup("--kitless", dry_run=True)
         self.assertIn("docker build", result.stdout)
         self.assertIn("--target kitless", result.stdout)
@@ -51,7 +51,7 @@ class DockerSetupTests(unittest.TestCase):
             result.stdout,
         )
         self.assertNotIn("-m venv", result.stdout)
-        self.assertFalse((REPO / ".venv").exists())
+        self.assertEqual(venv_existed, (REPO / ".venv").exists())
 
     def test_check_dry_run_runs_environment_check_inside_kitless_image(self):
         result = run_setup("--check", dry_run=True)

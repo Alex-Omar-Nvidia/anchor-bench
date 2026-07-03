@@ -20,6 +20,21 @@ folders under `outputs/sim2real_benchmark`, and analysis writes CSV metrics
 under `outputs/sim2real_analysis/metrics` plus generated joint and end-effector
 plots under `outputs/sim2real_analysis/plots/<dataset>/<motion>/...`.
 
+The default SO-101 motion is generated locally from NVIDIA's Anchor-Lab
+`so101-sysid-50motion-train-figure-eight.parquet` source by running:
+
+```bash
+python scripts/prepare_so101_figure_eight.py
+```
+
+The script verifies the published SHA-256, keeps the parquet and generated
+SAGE folder ignored, and records source URL, commit, signal mapping, and unit
+caveats in `metadata.yaml`. Signed torque is reconstructed from the provided
+`tau_abs` magnitude and `present_load_raw` sign; this inference should be
+checked against the source hardware calibration before physical conclusions.
+The conversion also writes two contiguous scalar CSV segments per joint under
+`training/<joint>/`, matching the native GRU trainer's feature contract.
+
 
 ## Neural Actuator Artifacts
 

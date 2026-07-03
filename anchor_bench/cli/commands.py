@@ -36,7 +36,7 @@ def _handle_robots(args: argparse.Namespace) -> int:
 
 def _handle_sysid(args: argparse.Namespace) -> int:
     from anchor_bench.core.schemas import SysIdRunConfig
-    from anchor_bench.sysid.runner import resolve_sysid_run_config, run_sysid
+    from anchor_bench.sysid.runner import resolve_sysid_run_config, run_resolved_sysid
 
     config = SysIdRunConfig(
         robot=args.robot,
@@ -52,12 +52,12 @@ def _handle_sysid(args: argparse.Namespace) -> int:
     resolved = resolve_sysid_run_config(config)
     if not args.dry_run:
         _require_existing_path("--data", resolved.data, kind="directory")
-    return _print_plan(run_sysid(config))
+    return _print_plan(run_resolved_sysid(resolved))
 
 
 def _handle_train(args: argparse.Namespace) -> int:
     from anchor_bench.core.schemas import TrainActuatorRunConfig
-    from anchor_bench.training.runner import resolve_train_actuator_run_config, run_train_actuator
+    from anchor_bench.training.runner import resolve_train_actuator_run_config, run_resolved_train_actuator
 
     config = TrainActuatorRunConfig(
         robot=args.robot,
@@ -79,11 +79,11 @@ def _handle_train(args: argparse.Namespace) -> int:
     resolved = resolve_train_actuator_run_config(config)
     if not args.dry_run:
         _require_existing_path("--data", resolved.data, kind="directory")
-    return _print_plan(run_train_actuator(config))
+    return _print_plan(run_resolved_train_actuator(resolved))
 
 
 def _handle_benchmark(args: argparse.Namespace) -> int:
-    from anchor_bench.benchmark.newton_runner import resolve_benchmark_run_config, run_benchmark
+    from anchor_bench.benchmark.newton_runner import resolve_benchmark_run_config, run_resolved_benchmark
     from anchor_bench.core.schemas import BenchmarkRunConfig
 
     config = BenchmarkRunConfig(
@@ -102,11 +102,11 @@ def _handle_benchmark(args: argparse.Namespace) -> int:
     if not args.dry_run:
         _require_existing_path("--motion", resolved.motion, kind="directory")
         _require_existing_path("--actuator-params", resolved.actuator_params)
-    return _print_plan(run_benchmark(config))
+    return _print_plan(run_resolved_benchmark(resolved))
 
 
 def _handle_analyze(args: argparse.Namespace) -> int:
-    from anchor_bench.analysis.runner import resolve_analysis_run_config, run_analysis
+    from anchor_bench.analysis.runner import resolve_analysis_run_config, run_resolved_analysis
 
     resolved = resolve_analysis_run_config(
         args.robot,
@@ -118,16 +118,7 @@ def _handle_analyze(args: argparse.Namespace) -> int:
     )
     if not args.dry_run:
         _require_existing_path("--result-folder", resolved.result_folder, kind="directory")
-    return _print_plan(
-        run_analysis(
-            args.robot,
-            args.result_folder,
-            args.output,
-            dry_run=args.dry_run,
-            require_end_effector=args.require_end_effector,
-            motions=args.motions,
-        )
-    )
+    return _print_plan(run_resolved_analysis(resolved))
 
 
 def _handle_experiment(args: argparse.Namespace) -> int:

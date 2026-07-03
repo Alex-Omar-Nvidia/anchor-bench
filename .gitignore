@@ -19,6 +19,7 @@ outputs/
 output/
 /data/
 inputs/datasets/g1/g1_arm_multi_joint/
+inputs/datasets/so101/custom_figure8_with_camera/
 *.pt
 *.pth
 *.onnx

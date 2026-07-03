@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-import yaml
 from anchor_bench.data.validation import validate_sage_dir
 
 

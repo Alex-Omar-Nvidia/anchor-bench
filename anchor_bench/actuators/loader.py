@@ -173,7 +173,6 @@ def author_newton_actuator_prims(spec: ActuatorFile, *, stage: Any, articulation
     _ensure_newton_native_supported(spec)
     joint_prims = _collect_joint_prims(stage, articulation_prim_path)
     for actuator in spec.actuators:
-        effort = _effort_limit(actuator)
         for joint_name in actuator.joints:
             if joint_name not in joint_prims:
                 raise ValueError(f"joint {joint_name!r} not found under {articulation_prim_path}")

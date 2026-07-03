@@ -36,7 +36,7 @@ training:
   joint_type: full
   input_columns: [position, position_error, velocity]
   target_column: torque
-  skip_optuna: true
+  skip_optuna: false
   trials: 20
   trial_epochs: 5
   final_epochs: 50

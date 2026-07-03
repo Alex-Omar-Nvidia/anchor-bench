@@ -1,6 +1,5 @@
 
 import unittest
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
@@ -42,6 +41,19 @@ class NativeActuatorSchemaTests(unittest.TestCase):
         for path in (repo_root() / "configs" / "robots").glob("*/actuators.yaml"):
             text = path.read_text()
             self.assertNotIn("model_type:", text, f"{path} still uses legacy model_type")
+        from anchor_bench.core.schemas import ActuatorFile
+
+        with self.assertRaisesRegex(ValueError, "actuator.yaml uses legacy model_type"):
+            ActuatorFile.from_dict({"model_type": "implicit"}, "actuator.yaml")
+
+    def test_external_config_models_are_frozen_pydantic_models(self):
+        from pydantic import BaseModel, ValidationError
+        from anchor_bench.core.schemas import RobotSpec
+
+        spec = RobotSpec.from_dict(_valid_robot_spec())
+        self.assertIsInstance(spec, BaseModel)
+        with self.assertRaises(ValidationError):
+            spec.name = "changed"
 
     def test_so101_uses_newton_component_schema(self):
         spec = load_actuator_file(repo_root() / "configs" / "robots" / "so101" / "actuators.yaml")

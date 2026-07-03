@@ -22,6 +22,7 @@ class ResolvedSysIdRunConfig:
     max_trajectory_len: int | None
     seed: int | None
     config_sources: dict[str, str]
+    actuator_config: str
 
 
 def _config_source(
@@ -72,12 +73,11 @@ def resolve_sysid_run_config(config: SysIdRunConfig) -> ResolvedSysIdRunConfig:
         max_trajectory_len=resolve_optional_positive_int("max_trajectory_len", config.max_trajectory_len),
         seed=config.seed,
         config_sources=config_sources,
+        actuator_config=bundle.paths.actuators.name,
     )
 
 
-def build_sysid_command(config: SysIdRunConfig) -> CommandPlan:
-    bundle = get_robot(config.robot)
-    resolved = resolve_sysid_run_config(config)
+def build_resolved_sysid_command(resolved: ResolvedSysIdRunConfig) -> CommandPlan:
     versions = load_external_versions()
     command = [
         "anchor-bench",
@@ -107,15 +107,19 @@ def build_sysid_command(config: SysIdRunConfig) -> CommandPlan:
         command=command,
         dry_run=resolved.dry_run,
         notes=[
-            f"uses {bundle.paths.actuators.relative_to(bundle.paths.config_dir)} with Newton {versions.newton_version} native actuator components",
+            f"uses {resolved.actuator_config} with Newton {versions.newton_version} native actuator components",
             f"requires newton {versions.newton_version} and Isaac Lab {versions.isaac_lab_branch}@{versions.isaac_lab_commit}",
         ],
     )
 
 
-def run_sysid(config: SysIdRunConfig) -> CommandPlan:
-    plan = build_sysid_command(config)
+def build_sysid_command(config: SysIdRunConfig) -> CommandPlan:
     resolved = resolve_sysid_run_config(config)
+    return build_resolved_sysid_command(resolved)
+
+
+def run_resolved_sysid(resolved: ResolvedSysIdRunConfig) -> CommandPlan:
+    plan = build_resolved_sysid_command(resolved)
     if resolved.dry_run:
         return plan
     from anchor_bench.runtime.environment import require_full_runtime
@@ -138,3 +142,7 @@ def run_sysid(config: SysIdRunConfig) -> CommandPlan:
         config_sources=resolved.config_sources,
     )
     return plan
+
+
+def run_sysid(config: SysIdRunConfig) -> CommandPlan:
+    return run_resolved_sysid(resolve_sysid_run_config(config))
