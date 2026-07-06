@@ -40,21 +40,22 @@ SO-101 includes `assets/robots/so101/files/so101.usd` for quick checks. Set
 `ANCHOR_BENCH_ASSET_DIR` only when you want to override it with your own USD
 assets.
 
-The default motion comes from NVIDIA's
-[Anchor-Lab SO-101 figure-eight parquet](https://huggingface.co/datasets/nvidia/Anchor-Lab/blob/main/data/so101_arm_50motion/so101-sysid-50motion-train-figure-eight.parquet).
-Prepare its ignored local SAGE conversion once before the first run:
+Download and convert NVIDIA's
+[Anchor-Lab SO-101 motion folder](https://huggingface.co/datasets/nvidia/Anchor-Lab/tree/main/data/so101_arm_50motion)
+before the first run:
 
 ```bash
-# Open container
+# Open the full container.
 ./setup.sh --shell
 
-# Download, verify, and convert the default figure-eight dataset
-python scripts/prepare_so101_figure_eight.py
+# Download, verify, and convert every parquet in the folder.
+python scripts/prepare_huggingface_parquets.py \
+  https://huggingface.co/datasets/nvidia/Anchor-Lab/tree/main/data/so101_arm_50motion
 
-# Optional: validate one epoch of real-data actuator training
+# Optional: validate one epoch of real-data actuator training.
 anchor-bench train-actuator --robot so101 --final-epochs 1 --skip-optuna
 
-# SysID
+# SysID uses the converted training figure-eight motion by default.
 anchor-bench sysid \
   --robot so101 \
   --headless --num-envs 2 --max-iter 1 --max-trajectory-len 200
@@ -71,6 +72,11 @@ anchor-bench benchmark \
 anchor-bench analyze --robot so101
 ```
 
+The importer infers `so101` from the folder name and writes converted motions
+under `inputs/datasets/so101/so101_arm_50motion/`. The 42 upstream
+`train-*` motions remain under `train/`; the 8 `heldout-*` motions remain
+under `heldout/` and must not influence normalization or model selection.
+
 Robot `run.yaml` supplies the default SysID dataset/output, benchmark
 motion/output, simulation timing, and analysis output/filter settings. CLI
 arguments override those defaults when you need a one-off run.
@@ -82,8 +88,8 @@ anchor-bench robots list
 anchor-bench robots describe so101
 
 # Full experiments (multiple configs)
-anchor-bench experiment benchmark configs/experiments/so101_custom_figure8_with_camera.yaml
-anchor-bench experiment analyze configs/experiments/so101_custom_figure8_with_camera.yaml
+anchor-bench experiment benchmark configs/experiments/so101_anchor_lab_figure_eight.yaml
+anchor-bench experiment analyze configs/experiments/so101_anchor_lab_figure_eight.yaml
 ```
 
 See [CLI commands](docs/cli.md) for the full command reference.

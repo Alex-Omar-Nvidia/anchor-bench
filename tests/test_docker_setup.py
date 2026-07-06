@@ -133,7 +133,7 @@ class DockerSetupTests(unittest.TestCase):
         self.assertIn("[Artifacts](docs/artifacts.md)", readme)
         self.assertIn("[Robot plugins](docs/robot-plugin.md)", readme)
         self.assertIn("run.yaml", readme)
-        self.assertIn("custom_figure8_with_camera", readme)
+        self.assertIn("prepare_huggingface_parquets.py", readme)
 
     def test_reference_docs_document_inputs_outputs_and_config_boundary(self):
         repo_structure = (REPO / "docs" / "repo-structure.md").read_text(encoding="utf-8")

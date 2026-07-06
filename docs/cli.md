@@ -42,8 +42,8 @@ mounted checkout.
 | `anchor-bench analyze --robot so101 --dry-run` | Build an analysis plan from `run.yaml` defaults |
 | `anchor-bench analyze --robot so101 --motion <name-or-glob> --dry-run` | Override the `run.yaml` analysis motion filter |
 | `anchor-bench analyze --robot so101 --result-folder <benchmark_dir> --require-end-effector` | Fail instead of skipping when SO-101 end-effector FK is unavailable |
-| `anchor-bench experiment benchmark configs/experiments/so101_custom_figure8_with_camera.yaml --dry-run` | Expand an experiment config into batched benchmark runs |
-| `anchor-bench experiment analyze configs/experiments/so101_custom_figure8_with_camera.yaml --dry-run` | Build the analysis plan for an experiment config |
+| `anchor-bench experiment benchmark configs/experiments/so101_anchor_lab_figure_eight.yaml --dry-run` | Expand an experiment config into batched benchmark runs |
+| `anchor-bench experiment analyze configs/experiments/so101_anchor_lab_figure_eight.yaml --dry-run` | Build the analysis plan for an experiment config |
 
 Use `--dry-run` for host-safe command construction checks. Actual SysID and
 benchmark runs require the full Isaac Sim/Newton runtime and, for SysID, the
@@ -66,7 +66,7 @@ The native training entrypoint is intentionally separate from CMA-ES SysID:
 anchor-bench train-actuator \
   --robot so101 \
   --model gru \
-  --data inputs/datasets/so101/custom_figure8_with_camera \
+  --data inputs/datasets/so101/so101_arm_50motion/train \
   --joint-type Rotation \
   --output outputs/training/so101/rotation \
   --input-columns position,position_error,velocity \

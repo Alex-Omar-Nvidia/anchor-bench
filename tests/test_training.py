@@ -162,7 +162,7 @@ class TrainingRunnerTests(unittest.TestCase):
 
         self.assertEqual("so101", resolved.robot)
         self.assertEqual("gru", resolved.model)
-        self.assertTrue(resolved.data.endswith("custom_figure8_with_camera"))
+        self.assertTrue(resolved.data.endswith("so101_arm_50motion/train"))
         self.assertTrue(resolved.output.endswith("outputs/training/so101"))
         self.assertEqual("full", resolved.joint_type)
         self.assertTrue(resolved.skip_optuna)

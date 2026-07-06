@@ -35,7 +35,7 @@ configs/
       bounds.yaml       # SysID parameter search bounds
       run.yaml          # default workflow settings for this robot
   experiments/
-    so101_custom_figure8_with_camera.yaml
+    so101_anchor_lab_figure_eight.yaml
 ```
 
 Use `robot.yaml` as the single source of truth for supported joint names and
@@ -64,12 +64,14 @@ Inputs are run data or frozen parameter files, not robot definitions.
 ```text
 inputs/
   datasets/
-    so101/
-      custom_figure8_with_camera/
+    <robot>/
+      <dataset>/
+        train/<motion>/
           control.csv
           state_motor.csv
           joint_list.txt
           metadata.yaml
+        heldout/<motion>/
   actuator_params/
     so101/
       fitted_seed42.yaml  # optional frozen known params for publishing/replay
