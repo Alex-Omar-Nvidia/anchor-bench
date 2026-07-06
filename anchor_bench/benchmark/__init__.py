@@ -1,9 +1,8 @@
 from anchor_bench.benchmark.newton_runner import (
     BenchmarkMotion,
     ResolvedBenchmarkRunConfig,
-    build_benchmark_command,
     build_resolved_benchmark_command,
-    run_benchmark,
+    resolve_benchmark_run_config,
     run_benchmark_batch,
     run_resolved_benchmark,
 )
@@ -11,9 +10,8 @@ from anchor_bench.benchmark.newton_runner import (
 __all__ = [
     "BenchmarkMotion",
     "ResolvedBenchmarkRunConfig",
-    "build_benchmark_command",
     "build_resolved_benchmark_command",
-    "run_benchmark",
+    "resolve_benchmark_run_config",
     "run_benchmark_batch",
     "run_resolved_benchmark",
 ]

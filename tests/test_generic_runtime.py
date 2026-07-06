@@ -35,6 +35,11 @@ class GenericRuntimeTests(unittest.TestCase):
             for folder in (real, sim):
                 folder.mkdir(parents=True)
                 (folder / "joint_list.txt").write_text("shoulder_pan_joint\n", encoding="utf-8")
+                (folder / "metadata.yaml").write_text(
+                    "schema: sage\ntime_unit: seconds\nposition_unit: rad\n"
+                    "velocity_unit: rad/s\ntorque_unit: N*m\n",
+                    encoding="utf-8",
+                )
                 (folder / "control.csv").write_text(
                     'type,timestamp,positions\nCONTROL,0.0,"[0.0]"\n'
                     'CONTROL,1000.0,"[1.0]"\n',
@@ -61,10 +66,10 @@ class GenericRuntimeTests(unittest.TestCase):
             self.assertFalse((output / "metrics" / "so101_metrics.csv").exists())
 
     def test_dispatchers_forward_non_so101_robot(self):
-        from anchor_bench.analysis.runner import run_analysis
+        from anchor_bench.analysis.runner import resolve_analysis_run_config, run_resolved_analysis
         from anchor_bench.benchmark.newton_runner import BenchmarkMotion, run_benchmark_batch
         from anchor_bench.core.schemas import SysIdRunConfig
-        from anchor_bench.sysid.runner import run_sysid
+        from anchor_bench.sysid.runner import resolve_sysid_run_config, run_resolved_sysid
 
         with patch("anchor_bench.runtime.environment.require_full_runtime"), patch(
             "anchor_bench.runtime.assets.resolve_runtime_asset"
@@ -79,7 +84,7 @@ class GenericRuntimeTests(unittest.TestCase):
         with patch("anchor_bench.runtime.environment.require_full_runtime"), patch(
             "anchor_bench.runtime.assets.resolve_runtime_asset"
         ), patch("anchor_bench.sysid.runtime.run_robot_sysid") as sysid:
-            run_sysid(
+            resolved = resolve_sysid_run_config(
                 SysIdRunConfig(
                     robot="ur10e",
                     data="motion",
@@ -88,36 +93,15 @@ class GenericRuntimeTests(unittest.TestCase):
                     max_iter=1,
                 )
             )
+            run_resolved_sysid(resolved)
         self.assertEqual("ur10e", sysid.call_args.args[0])
 
         with patch("anchor_bench.analysis.runtime.run_robot_analysis") as analysis:
-            run_analysis(
+            resolved = resolve_analysis_run_config(
                 "ur10e",
                 result_folder="results",
                 output="output",
                 dry_run=False,
             )
+            run_resolved_analysis(resolved)
         self.assertEqual("ur10e", analysis.call_args.args[0])
-
-    def test_public_runners_resolve_configuration_once(self):
-        import anchor_bench.analysis.runner as analysis_runner
-        import anchor_bench.benchmark.newton_runner as benchmark_runner
-        from anchor_bench.core.schemas import BenchmarkRunConfig, SysIdRunConfig, TrainActuatorRunConfig
-        import anchor_bench.sysid.runner as sysid_runner
-        import anchor_bench.training.runner as training_runner
-
-        with patch.object(sysid_runner, "resolve_sysid_run_config", wraps=sysid_runner.resolve_sysid_run_config) as resolver:
-            sysid_runner.run_sysid(SysIdRunConfig(robot="so101", dry_run=True))
-        resolver.assert_called_once()
-
-        with patch.object(benchmark_runner, "resolve_benchmark_run_config", wraps=benchmark_runner.resolve_benchmark_run_config) as resolver:
-            benchmark_runner.run_benchmark(BenchmarkRunConfig(robot="so101", dry_run=True))
-        resolver.assert_called_once()
-
-        with patch.object(training_runner, "resolve_train_actuator_run_config", wraps=training_runner.resolve_train_actuator_run_config) as resolver:
-            training_runner.run_train_actuator(TrainActuatorRunConfig(robot="so101", dry_run=True))
-        resolver.assert_called_once()
-
-        with patch.object(analysis_runner, "resolve_analysis_run_config", wraps=analysis_runner.resolve_analysis_run_config) as resolver:
-            analysis_runner.run_analysis("so101", dry_run=True)
-        resolver.assert_called_once()

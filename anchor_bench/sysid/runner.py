@@ -113,11 +113,6 @@ def build_resolved_sysid_command(resolved: ResolvedSysIdRunConfig) -> CommandPla
     )
 
 
-def build_sysid_command(config: SysIdRunConfig) -> CommandPlan:
-    resolved = resolve_sysid_run_config(config)
-    return build_resolved_sysid_command(resolved)
-
-
 def run_resolved_sysid(resolved: ResolvedSysIdRunConfig) -> CommandPlan:
     plan = build_resolved_sysid_command(resolved)
     if resolved.dry_run:
@@ -142,7 +137,3 @@ def run_resolved_sysid(resolved: ResolvedSysIdRunConfig) -> CommandPlan:
         config_sources=resolved.config_sources,
     )
     return plan
-
-
-def run_sysid(config: SysIdRunConfig) -> CommandPlan:
-    return run_resolved_sysid(resolve_sysid_run_config(config))

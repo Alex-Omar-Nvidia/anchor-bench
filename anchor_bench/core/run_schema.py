@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
@@ -15,35 +14,16 @@ class CMAESConfig(ConfigModel):
     epsilon: float | None = Field(default=0.01, ge=0.0)
 
 
-class ConfigSection(ConfigModel, Mapping[str, Any]):
-    """Read-only mapping compatibility for typed run-config sections."""
-
-    def __getitem__(self, key: str) -> Any:
-        if key not in type(self).model_fields:
-            raise KeyError(key)
-        value = getattr(self, key)
-        if value is None:
-            raise KeyError(key)
-        return value
-
-    def __iter__(self) -> Iterator[str]:
-        return (name for name in type(self).model_fields if getattr(self, name) is not None)
-
-    def __len__(self) -> int:
-        return sum(1 for _ in self)
-
-
-class SimulationDefaults(ConfigSection):
+class SimulationDefaults(ConfigModel):
     physics_freq: int | None = Field(default=None, ge=1)
     control_freq: int | None = Field(default=None, ge=1)
     render_freq: int | None = Field(default=None, ge=1)
     integrator: str | None = None
     solver_iterations: int | None = Field(default=None, ge=1)
     line_search_iterations: int | None = Field(default=None, ge=1)
-    ls_iterations: int | None = Field(default=None, ge=1)
 
 
-class BenchmarkDefaults(ConfigSection):
+class BenchmarkDefaults(ConfigModel):
     dataset: str | None = None
     fix_root: StrictBool | None = None
     buffer_time: float | None = Field(default=None, ge=0.0)
@@ -53,7 +33,7 @@ class BenchmarkDefaults(ConfigSection):
     real_init_pose_sync: StrictBool | None = None
 
 
-class AnalysisDefaults(ConfigSection):
+class AnalysisDefaults(ConfigModel):
     output_dir: str | None = None
     sample_dt: float | None = Field(default=None, ge=0.0)
     motion_names: str | list[str] | None = None
@@ -68,7 +48,7 @@ class AnalysisDefaults(ConfigSection):
         return [str(item) for item in value]
 
 
-class SysIdDefaults(ConfigSection):
+class SysIdDefaults(ConfigModel):
     output_dir: str | None = None
     real_data_dir: str | None = None
     joints: str | list[str] | None = None
@@ -86,7 +66,7 @@ class SysIdDefaults(ConfigSection):
         return [str(item) for item in value]
 
 
-class TrainingDefaults(ConfigSection):
+class TrainingDefaults(ConfigModel):
     model: Literal["gru", "hybrid_residual"] | None = None
     real_data_dir: str | None = None
     output_dir: str | None = None
@@ -107,7 +87,7 @@ class TrainingDefaults(ConfigSection):
         return None if value is None else parse_gru_columns(value)
 
 
-class RobotRunFile(ConfigSection):
+class RobotRunFile(ConfigModel):
     simulation: SimulationDefaults = Field(default_factory=SimulationDefaults)
     benchmark: BenchmarkDefaults = Field(default_factory=BenchmarkDefaults)
     analysis: AnalysisDefaults = Field(default_factory=AnalysisDefaults)
@@ -115,18 +95,19 @@ class RobotRunFile(ConfigSection):
     training: TrainingDefaults = Field(default_factory=TrainingDefaults)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any] | None, source: str | Path) -> "RobotRunFile":
+    def from_dict(cls, data: dict[str, Any] | None, source: str | Path) -> "RobotRunFile":
         return super().from_dict(data, source)
 
     def to_dict(self) -> dict[str, Any]:
+        sections = {
+            "simulation": self.simulation,
+            "benchmark": self.benchmark,
+            "analysis": self.analysis,
+            "sysid": self.sysid,
+            "training": self.training,
+        }
         return {
-            name: section.to_dict()
-            for name, section in (
-                ("simulation", self.simulation),
-                ("benchmark", self.benchmark),
-                ("analysis", self.analysis),
-                ("sysid", self.sysid),
-                ("training", self.training),
-            )
-            if len(section)
+            name: payload
+            for name, section in sections.items()
+            if (payload := section.to_dict())
         }

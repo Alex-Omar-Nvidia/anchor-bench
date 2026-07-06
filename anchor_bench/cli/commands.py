@@ -130,21 +130,6 @@ def _handle_experiment(args: argparse.Namespace) -> int:
     return _print_plan(run_experiment_analysis(args.config, dry_run=args.dry_run))
 
 
-def _handle_convert(args: argparse.Namespace) -> int:
-    from anchor_bench.data.validation import validate_sage_dir
-    from anchor_bench.robots.registry import get_robot
-
-    get_robot(args.robot)
-    if args.input:
-        try:
-            validate_sage_dir(args.input)
-        except (FileNotFoundError, ValueError):
-            if not args.dry_run:
-                raise
-    print(json.dumps({"workflow": "convert", "robot": args.robot, "format": args.format, "dry_run": args.dry_run}, indent=2))
-    return 0
-
-
 _HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "robots": _handle_robots,
     "sysid": _handle_sysid,
@@ -152,7 +137,6 @@ _HANDLERS: dict[str, Callable[[argparse.Namespace], int]] = {
     "benchmark": _handle_benchmark,
     "analyze": _handle_analyze,
     "experiment": _handle_experiment,
-    "convert": _handle_convert,
 }
 
 

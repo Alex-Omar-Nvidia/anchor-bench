@@ -34,7 +34,7 @@ mounted checkout.
 | Command | Purpose |
 | --- | --- |
 | `anchor-bench --help` | Show top-level CLI commands |
-| `anchor-bench robots list` | List registered robots (`h1`, `so101`, `teststand`, `ur10e`) |
+| `anchor-bench robots list` | List registered robots (`g1`, `h1`, `so101`, `teststand`, `ur10e`) |
 | `anchor-bench robots describe so101` | Print robot metadata and validation errors as JSON |
 | `anchor-bench sysid --robot so101 --dry-run` | Build a SysID command plan from `run.yaml` defaults without launching simulation |
 | `anchor-bench train-actuator --robot so101 --dry-run` | Build a neural actuator training plan from `run.yaml` defaults without importing ML libraries |
@@ -44,13 +44,12 @@ mounted checkout.
 | `anchor-bench analyze --robot so101 --result-folder <benchmark_dir> --require-end-effector` | Fail instead of skipping when SO-101 end-effector FK is unavailable |
 | `anchor-bench experiment benchmark configs/experiments/so101_custom_figure8_with_camera.yaml --dry-run` | Expand an experiment config into batched benchmark runs |
 | `anchor-bench experiment analyze configs/experiments/so101_custom_figure8_with_camera.yaml --dry-run` | Build the analysis plan for an experiment config |
-| `anchor-bench convert --robot so101 --format sage --input <data_dir> --dry-run` | Validate or plan conversion for input data |
 
 Use `--dry-run` for host-safe command construction checks. Actual SysID and
 benchmark runs require the full Isaac Sim/Newton runtime and, for SysID, the
 `cmaes` package. Neural actuator training does not require Isaac Sim/Newton,
-but execution imports `torch` and `pandas`; omit `--skip-optuna` only in an
-environment with `optuna` installed.
+but execution requires `torch`; omit `--skip-optuna` only in an environment
+with `optuna` installed.
 
 Robot `run.yaml` provides default SysID data/output paths, training
 data/output/model settings, benchmark motion/output paths, simulation timing,
@@ -75,6 +74,13 @@ anchor-bench train-actuator \
   --skip-optuna \
   --dry-run
 ```
+
+Training consumes SAGE motion folders. Command position, measured position,
+velocity, torque, and `position_error` are mapped directly in memory;
+per-joint training CSV copies
+are not required. `--joint-type full` creates one independent sequence per
+canonical robot joint without splitting joints from the same motion across
+training and validation.
 
 Use `--model gru` for full-torque GRU prediction from
 `[position, position_error, velocity]`. Use `--model hybrid_residual`

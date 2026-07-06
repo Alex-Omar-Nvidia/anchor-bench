@@ -37,14 +37,10 @@ def _valid_bounds_file() -> dict:
 
 
 class NativeActuatorSchemaTests(unittest.TestCase):
-    def test_no_legacy_model_type_blocks_remain_in_robot_configs(self):
+    def test_robot_actuator_configs_use_supported_schema(self):
         for path in (repo_root() / "configs" / "robots").glob("*/actuators.yaml"):
             text = path.read_text()
             self.assertNotIn("model_type:", text, f"{path} still uses legacy model_type")
-        from anchor_bench.core.schemas import ActuatorFile
-
-        with self.assertRaisesRegex(ValueError, "actuator.yaml uses legacy model_type"):
-            ActuatorFile.from_dict({"model_type": "implicit"}, "actuator.yaml")
 
     def test_external_config_models_are_frozen_pydantic_models(self):
         from pydantic import BaseModel, ValidationError
@@ -436,7 +432,7 @@ class NativeActuatorSchemaTests(unittest.TestCase):
         bundle = get_robot("so101")
 
         self.assertEqual(100, bundle.run_config.sysid.cmaes.max_iterations)
-        self.assertNotIn("max_iter", bundle.run_config.sysid)
+        self.assertFalse(hasattr(bundle.run_config.sysid, "max_iter"))
 
     def test_bounds_configs_do_not_contain_cmaes_policy(self):
         for path in (repo_root() / "configs" / "robots").glob("*/bounds.yaml"):
@@ -454,54 +450,6 @@ class NativeActuatorSchemaTests(unittest.TestCase):
             self.assertNotIn("max_iter", sysid, f"{path} should use sysid.cmaes.max_iterations")
             self.assertIn("cmaes", sysid, f"{path} should define sysid.cmaes")
 
-    def test_legacy_migration_utility_removes_model_type(self):
-        from anchor_bench.migration.legacy import migrate_legacy_actuator_config
-
-        migrated = migrate_legacy_actuator_config(
-            {
-                "model_type": "implicit",
-                "yaml_file": "so101/so101_implicit.yaml",
-                "motor_lag_ms": 2.0,
-                "parameters": {
-                    "stiffness": 4.0,
-                    "damping": 0.1,
-                    "effort_limit_sim": 1.5,
-                    "velocity_limit_sim": 6.28,
-                    "dynamic_friction": {"Rotation": 0.25},
-                },
-            },
-            robot_name="so101",
-            joint_names=["Rotation"],
-        )
-        self.assertNotIn("model_type", yaml.safe_dump(migrated))
-        self.assertEqual(migrated["actuators"][0]["controller"]["type"], "pd")
-        self.assertEqual(migrated["actuators"][0]["delay"]["duration_ms"], 2.0)
-        physical = migrated["actuators"][0]["physical_parameters"]
-        self.assertEqual({"Rotation": 0.25}, physical["dry_friction"])
-        self.assertNotIn("dynamic_friction", physical)
-
-    def test_legacy_migration_hybrid_residual_emits_loadable_residual(self):
-        from anchor_bench.core.schemas import ResidualSpec
-        from anchor_bench.migration.legacy import migrate_legacy_actuator_config
-
-        migrated = migrate_legacy_actuator_config(
-            {
-                "model_type": "hybrid_residual",
-                "network_file": "so101/residual_gru.pt",
-                "parameters": {"stiffness": 4.0, "damping": 0.1},
-            },
-            robot_name="so101",
-            joint_names=["Rotation"],
-        )
-        residual = migrated["actuators"][0]["residual"]
-        # The residual must use the singular ``network_file`` key from ResidualSpec,
-        # not a plural ``network_files`` that would fail to load.
-        self.assertNotIn("network_files", residual)
-        self.assertEqual(residual["network_file"], "so101/residual_gru.pt")
-        # And the migrated residual block must round-trip through the schema.
-        parsed = ResidualSpec.from_dict(residual, "migrated.residual")
-        self.assertEqual(parsed.type, "gru")
-        self.assertEqual(parsed.network_file, "so101/residual_gru.pt")
 
 
 if __name__ == "__main__":

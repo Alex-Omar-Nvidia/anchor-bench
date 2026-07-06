@@ -1,17 +1,17 @@
 # Anchor Bench
 
 Anchor Bench is a focused system identification (SysID) and sim-to-real benchmark package for robot
-actuator models on Isaac Sim 6.0, Newton 1.2, and Isaac Lab `develop`.
+actuator models on the Isaac Sim, Newton, and Isaac Lab versions pinned in
+[`versions/compatibility.toml`](versions/compatibility.toml).
 
 The repo provides robot configs, data loaders, SysID command builders, Newton
 benchmark command builders, and analysis helpers around the actuator-identification workflow.
 
 ## Compatibility
 
-- Isaac Sim: `6.0.0.0`
-- Newton: `1.2.0`
-- Isaac Lab: `develop` at `482d21c936b863e323f0a135c8e8e8e8a9c166b2`
-- Python: `3.12`
+[`versions/compatibility.toml`](versions/compatibility.toml) is the single
+source of truth for supported Isaac Sim, Newton, Isaac Lab, and Python versions.
+`setup.sh` and the Python environment checks consume that manifest.
 
 ## Installation
 
@@ -95,7 +95,7 @@ anchor_bench/   Python package: CLI, loaders, runners, runtime helpers
 configs/        Declarative robot and experiment configuration
 assets/         Robot USD/MJCF/mesh assets and manifests
 inputs/         Measured datasets and curated frozen actuator params
-outputs/        Generated SysID, benchmark, and analysis artifacts
+outputs/        Generated SysID, training, benchmark, and analysis artifacts
 third_party/    Ignored local artifacts and optional vendor checkouts
 ```
 
@@ -108,7 +108,7 @@ See [repo structure](docs/repo-structure.md) for the detailed rules.
 - [Artifacts](docs/artifacts.md): large files, SO-101 USD handling, and generated output locations.
 - [Host-safe end-to-end test](docs/end-to-end-test.md): SysID to benchmark to analysis contract coverage.
 - [Robot plugins](docs/robot-plugin.md): files required to add a new robot.
-- [Newton 1.2 migration](docs/migration-newton-1.2.md): actuator schema migration notes.
+- [G1 neural actuator recipes](docs/g1-neural-actuator-recipes.md): supported and experimental G1 training paths.
 
 ## Acknowledgements
 

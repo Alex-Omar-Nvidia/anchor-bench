@@ -14,7 +14,7 @@ inputs/                Measured datasets, curated params, and non-weight actuato
 outputs/               Generated SysID, training, benchmark, and analysis artifacts
 third_party/           Ignored local artifacts and optional vendor checkouts
 docker/                Container entrypoints and GUI/headless/persistent run helpers
-docs/                  Design notes, migration notes, and artifact guidance
+docs/                  CLI, plugin, artifact, and test guidance
 examples/              Small smoke-test data/results
 tests/                 Host-safe unit tests and dry-run command checks
 versions/              Runtime compatibility pins
@@ -47,8 +47,8 @@ measured data, and `outputs/...` for generated artifacts.
 
 ## Assets
 
-SO-101 can use `assets/robots/so101/files/so101.usd` for quick checks when that
-asset is available locally. For other robots, provide USD/MJCF/mesh files either by placing them under
+SO-101 includes `assets/robots/so101/files/so101.usd` for quick checks.
+For other robots, provide USD/MJCF/mesh files either by placing them under
 `assets/robots/<robot>/files/` or by setting `ANCHOR_BENCH_ASSET_DIR` to a
 directory containing the assets. Use `ANCHOR_BENCH_ASSET_DIR` when assets are
 local, private, large, or shared across repos.
@@ -72,7 +72,6 @@ inputs/
           metadata.yaml
   actuator_params/
     so101/
-      initial.yaml        # optional curated baseline copy, if useful
       fitted_seed42.yaml  # optional frozen known params for publishing/replay
   actuator_models/
     <robot>/
@@ -95,11 +94,11 @@ outputs/
     <robot>/<run>/
       best_params.yaml
       run_summary.yaml
-	  training/
-	    <robot>/<run>/
-	      *_best.pt           # ignored generated checkpoint
-	      *_stats.json        # generated normalization and metric metadata
-	      *_network.pt        # ignored TorchScript runtime network
+  training/
+    <robot>/<run>/
+      *_best.pt           # ignored generated checkpoint
+      *_stats.json        # normalization and metric metadata
+      *_network.pt        # ignored TorchScript runtime network
   sim2real_benchmark/
     sim/<robot>/<dataset>/<actuator_model>/<motion>/
     real/<robot>/<dataset>/<motion>/
@@ -110,8 +109,10 @@ outputs/
 
 Use `outputs/sysid/.../best_params.yaml` directly for local replay, or copy a
 chosen frozen file into `inputs/actuator_params/<robot>/` when it becomes a
-published input. Benchmark and analysis outputs can be regenerated and should
-stay separate from `configs/`.
+published input. Fitted files use the same schema-v2 actuator document as
+`configs/robots/<robot>/actuators.yaml`, with run provenance under the optional
+top-level `metadata` mapping. Benchmark and analysis outputs can be regenerated
+and should stay separate from `configs/`.
 
 ## Third Party
 

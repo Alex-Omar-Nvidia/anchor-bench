@@ -70,10 +70,4 @@ def build_parser() -> argparse.ArgumentParser:
     experiment_analyze.add_argument("config")
     experiment_analyze.add_argument("--dry-run", action="store_true")
 
-    convert = sub.add_parser("convert")
-    convert.add_argument("--robot", required=True)
-    convert.add_argument("--format", required=True)
-    convert.add_argument("--input")
-    convert.add_argument("--output")
-    convert.add_argument("--dry-run", action="store_true")
     return parser

@@ -19,7 +19,6 @@ from anchor_bench.core.run_schema import (
     AnalysisDefaults,
     BenchmarkDefaults,
     CMAESConfig,
-    ConfigSection,
     RobotRunFile,
     SimulationDefaults,
     SysIdDefaults,
@@ -111,6 +110,7 @@ class ActuatorFile(ConfigModel):
     schema_version: int = Field(ge=2)
     backend: str
     actuators: list[ActuatorSpec]
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("backend")
     @classmethod
@@ -219,7 +219,6 @@ __all__ = [
     "BoundsRange",
     "CMAESConfig",
     "ClampingSpec",
-    "ConfigSection",
     "ControllerSpec",
     "DelaySpec",
     "ExperimentActuatorModel",

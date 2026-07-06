@@ -8,6 +8,8 @@ from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
+import yaml
+
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -20,6 +22,17 @@ def run_cli(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=check,
+    )
+
+
+def write_sage_metadata(folder: Path, time_unit: str = "seconds") -> None:
+    (folder / "metadata.yaml").write_text(
+        "schema: sage\n"
+        f"time_unit: {time_unit}\n"
+        "position_unit: rad\n"
+        "velocity_unit: rad/s\n"
+        "torque_unit: N*m\n",
+        encoding="utf-8",
     )
 
 
@@ -63,30 +76,30 @@ class RuntimeWorkflowTests(unittest.TestCase):
         self.assertEqual(params["viscous_friction"]["Pitch"], 0.561425)
         self.assertEqual(params["motor_lag_ms"], 0.0)
 
-    def test_best_params_overlay_preserves_static_limits(self):
-        from anchor_bench.runtime.robot_config import load_implicit_actuator_params
+    def test_fitted_actuator_document_preserves_static_limits(self):
+        from anchor_bench.runtime.robot_config import (
+            build_fitted_actuator_document,
+            load_implicit_actuator_params,
+        )
         from anchor_bench.robots.registry import get_robot
 
+        bundle = get_robot("so101")
         with tempfile.TemporaryDirectory() as tmp:
             params_path = Path(tmp) / "best_params.yaml"
+            document = build_fitted_actuator_document(
+                bundle,
+                {
+                    "stiffness": {"Rotation": 10.0},
+                    "damping": {"Jaw": 1.5},
+                },
+                metadata={"source": "sysid", "best_mse": 0.01},
+            )
             params_path.write_text(
-                "provenance:\n"
-                "  source: sysid\n"
-                "  intended_use: benchmark_replay\n"
-                "stiffness:\n"
-                "  Rotation: 10.0\n"
-                "damping:\n"
-                "  Jaw: 1.5\n"
-                "best_mse: 0.01\n"
-                "robot_name: so101\n"
-                "mode: all_joints\n"
-                "joints:\n"
-                "  - Rotation\n"
-                "data_source: inputs/example\n",
+                yaml.safe_dump(document, sort_keys=False),
                 encoding="utf-8",
             )
 
-            params = load_implicit_actuator_params(get_robot("so101"), params_path)
+            params = load_implicit_actuator_params(bundle, params_path)
 
         self.assertEqual(params["stiffness"]["Rotation"], 10.0)
         self.assertEqual(params["stiffness"]["Pitch"], 47.782635)
@@ -141,18 +154,21 @@ class RuntimeWorkflowTests(unittest.TestCase):
     def test_sysid_command_preflights_so101_asset(self):
         from anchor_bench.core.schemas import SysIdRunConfig
         from anchor_bench.runtime.assets import AssetNotFoundError
-        from anchor_bench.sysid.runner import run_sysid
+        from anchor_bench.sysid.runner import resolve_sysid_run_config, run_resolved_sysid
 
         with tempfile.TemporaryDirectory() as tmp:
             with patch("anchor_bench.runtime.environment.require_full_runtime"):
                 with patch("anchor_bench.runtime.assets._candidate_roots", return_value=[Path(tmp)]):
                     with self.assertRaises(AssetNotFoundError) as ctx:
-                        run_sysid(SysIdRunConfig(
-                            robot="so101",
-                            data="inputs/datasets/so101/custom_figure8_with_camera",
-                            output="outputs/sysid/so101/smoke",
-                            dry_run=False,
-                        ))
+                        resolved = resolve_sysid_run_config(
+                            SysIdRunConfig(
+                                robot="so101",
+                                data="inputs/datasets/so101/custom_figure8_with_camera",
+                                output="outputs/sysid/so101/smoke",
+                                dry_run=False,
+                            )
+                        )
+                        run_resolved_sysid(resolved)
 
         self.assertIn("Missing asset 'so101.usd' for robot so101.", str(ctx.exception))
 
@@ -260,13 +276,14 @@ class RuntimeWorkflowTests(unittest.TestCase):
 
     def test_simulation_timing_uses_render_freq(self):
         from anchor_bench.core.run_config import resolve_simulation_timing
+        from anchor_bench.core.schemas import SimulationDefaults
 
         timing = resolve_simulation_timing(
-            {
-                "physics_freq": 500,
-                "control_freq": 100,
-                "render_freq": 50,
-            },
+            SimulationDefaults(
+                physics_freq=500,
+                control_freq=100,
+                render_freq=50,
+            ),
             "run.yaml.simulation",
         )
 
@@ -277,11 +294,11 @@ class RuntimeWorkflowTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "physics_freq divisible by render_freq"):
             resolve_simulation_timing(
-                {
-                    "physics_freq": 500,
-                    "control_freq": 100,
-                    "render_freq": 333,
-                },
+                SimulationDefaults(
+                    physics_freq=500,
+                    control_freq=100,
+                    render_freq=333,
+                ),
                 "run.yaml.simulation",
             )
 
@@ -863,6 +880,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
             for folder in (real, sim, sim_lstm):
                 folder.mkdir(parents=True)
                 (folder / "joint_list.txt").write_text("Rotation\nPitch\n", encoding="utf-8")
+                write_sage_metadata(folder)
                 (folder / "control.csv").write_text(
                     'type,timestamp,positions\nCONTROL,0.0,"[0.0, 0.0]"\nCONTROL,1000.0,"[1.0, 2.0]"\n',
                     encoding="utf-8",
@@ -916,6 +934,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
             (folder / "joint_list.txt").write_text("Rotation\n", encoding="utf-8")
+            write_sage_metadata(folder)
             (folder / "control.csv").write_text(
                 'type,timestamp,positions\n'
                 'CONTROL,0.0,"[0.0]"\n'
@@ -931,12 +950,12 @@ class RuntimeWorkflowTests(unittest.TestCase):
 
             trace = _read_trace(folder, sample_dt=0.5)
 
-        self.assertEqual(trace.control_time.tolist(), [0.0, 0.5, 1.0])
-        self.assertEqual(trace.state_time.tolist(), [0.0, 0.5, 1.0])
-        self.assertEqual(trace.control_positions[:, 0].tolist(), [0.0, 0.5, 1.0])
-        self.assertEqual(trace.positions[:, 0].tolist(), [0.0, 1.0, 2.0])
-        self.assertEqual(trace.velocities[:, 0].tolist(), [0.0, 2.0, 4.0])
-        self.assertEqual(trace.torques[:, 0].tolist(), [1.0, 3.0, 5.0])
+        self.assertEqual(trace.command_position.time.tolist(), [0.0, 0.5, 1.0])
+        self.assertEqual(trace.position.time.tolist(), [0.0, 0.5, 1.0])
+        self.assertEqual(trace.command_position.values[:, 0].tolist(), [0.0, 0.5, 1.0])
+        self.assertEqual(trace.position.values[:, 0].tolist(), [0.0, 1.0, 2.0])
+        self.assertEqual(trace.velocity.values[:, 0].tolist(), [0.0, 2.0, 4.0])
+        self.assertEqual(trace.effort.values[:, 0].tolist(), [1.0, 3.0, 5.0])
 
     def test_analysis_motion_filter_supports_globs(self):
         from anchor_bench.analysis.runtime import run_robot_analysis
@@ -949,6 +968,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
                 for folder in (real, sim):
                     folder.mkdir(parents=True)
                     (folder / "joint_list.txt").write_text("Rotation\n", encoding="utf-8")
+                    write_sage_metadata(folder)
                     (folder / "control.csv").write_text(
                         'type,timestamp,positions\nCONTROL,0.0,"[0.0]"\nCONTROL,1000.0,"[1.0]"\n',
                         encoding="utf-8",
@@ -977,6 +997,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
             for folder in (real, sim):
                 folder.mkdir(parents=True)
                 (folder / "joint_list.txt").write_text("Rotation\nPitch\n", encoding="utf-8")
+                write_sage_metadata(folder)
                 (folder / "control.csv").write_text(
                     'type,timestamp,positions\nCONTROL,0.0,"[0.0, 0.0]"\nCONTROL,1000.0,"[1.0, 2.0]"\n',
                     encoding="utf-8",
@@ -1008,6 +1029,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
             for folder in (real, sim):
                 folder.mkdir(parents=True)
                 (folder / "joint_list.txt").write_text("Rotation\nPitch\n", encoding="utf-8")
+                write_sage_metadata(folder)
                 (folder / "control.csv").write_text(
                     'type,timestamp,positions\nCONTROL,0.0,"[0.0, 0.0]"\nCONTROL,1000.0,"[1.0, 2.0]"\n',
                     encoding="utf-8",
@@ -1035,6 +1057,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
             for folder in (real, sim):
                 folder.mkdir(parents=True)
                 (folder / "joint_list.txt").write_text("Rotation\n", encoding="utf-8")
+                write_sage_metadata(folder)
                 (folder / "control.csv").write_text(
                     'type,timestamp,positions\nCONTROL,0.0,"[0.0]"\nCONTROL,1000.0,"[1.0]"\n',
                     encoding="utf-8",

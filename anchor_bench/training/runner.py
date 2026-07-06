@@ -14,10 +14,11 @@ from anchor_bench.training.data import (
     DEFAULT_TARGET_COLUMN,
     MODEL_CHOICES,
     SUPPORTED_INPUT_COLUMNS,
-    discover_csv_files,
-    read_csv_header,
+    discover_training_sources,
+    expand_joint_sources,
+    read_training_header,
     resolve_training_columns,
-    split_csv_files,
+    split_training_sources,
 )
 
 if TYPE_CHECKING:
@@ -183,7 +184,7 @@ def _command_from_resolved(resolved: ResolvedTrainActuatorRunConfig) -> list[str
 
 def build_resolved_train_actuator_command(resolved: ResolvedTrainActuatorRunConfig) -> CommandPlan:
     notes = [
-        "trains a stateful TBPTT GRU actuator model with torch/pandas imported only during execution",
+        "trains a stateful TBPTT GRU actuator model with torch imported only during execution",
         f"generated checkpoints and stats should stay under outputs/training/{resolved.robot}/ by convention",
         "promote only non-weight metadata into inputs/actuator_models/<robot>/ when needed",
     ]
@@ -234,7 +235,7 @@ def _residual_physics_for_joint(robot: str, joint_type: str) -> "ResidualPhysics
     actuator = matching[0]
     controller_params = actuator.controller.parameters
     physical = actuator.physical_parameters
-    dry = physical.get("dry_friction", physical.get("dynamic_friction"))
+    dry = physical.get("dry_friction")
     return ResidualPhysics(
         stiffness=_param_for_joint(controller_params.get("stiffness"), joint_type),
         damping=_param_for_joint(controller_params.get("damping"), joint_type),
@@ -250,11 +251,13 @@ def run_resolved_train_actuator(resolved: ResolvedTrainActuatorRunConfig) -> Com
 
     from anchor_bench.training.trainer import TrainingJob, train_stateful_gru
 
-    csvs = discover_csv_files(resolved.data)
-    train_csvs, val_csvs = split_csv_files(csvs, seed=resolved.seed)
+    sources = discover_training_sources(resolved.data)
+    if resolved.joint_type == "full":
+        sources = expand_joint_sources(sources, get_robot(resolved.robot).spec.joint_names)
+    train_sources, val_sources = split_training_sources(sources, seed=resolved.seed)
     derived_columns = ["solver_pd"] if resolved.model == "hybrid_residual" else []
     columns = resolve_training_columns(
-        read_csv_header(train_csvs[0]),
+        read_training_header(train_sources[0], resolved.joint_type),
         model=resolved.model,
         input_columns=resolved.input_columns,
         target_column=resolved.target_column,
@@ -277,8 +280,8 @@ def run_resolved_train_actuator(resolved: ResolvedTrainActuatorRunConfig) -> Com
         TrainingJob(
             model=resolved.model,
             joint_type=resolved.joint_type,
-            train_csvs=train_csvs,
-            val_csvs=val_csvs,
+            train_sources=train_sources,
+            val_sources=val_sources,
             output_dir=Path(resolved.output),
             input_columns=columns.input_columns,
             target_columns=columns.target_columns,
@@ -309,11 +312,3 @@ def run_resolved_train_actuator(resolved: ResolvedTrainActuatorRunConfig) -> Com
         notes=plan.notes,
         metadata=extra_metadata,
     )
-
-
-def build_train_actuator_command(config: TrainActuatorRunConfig) -> CommandPlan:
-    return build_resolved_train_actuator_command(resolve_train_actuator_run_config(config))
-
-
-def run_train_actuator(config: TrainActuatorRunConfig) -> CommandPlan:
-    return run_resolved_train_actuator(resolve_train_actuator_run_config(config))

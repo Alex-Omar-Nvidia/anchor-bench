@@ -14,19 +14,8 @@ from typing import Callable, Iterable, cast
 import numpy as np
 
 from anchor_bench.core.run_config import resolve_simulation_timing
-from anchor_bench.data.sage import load_joint_list, load_vector_csv
-
-
-@dataclass(frozen=True)
-class SageTrace:
-    joint_names: list[str]
-    control_time: np.ndarray
-    control_positions: np.ndarray
-    state_time: np.ndarray
-    positions: np.ndarray
-    velocities: np.ndarray
-    torques: np.ndarray
-
+from anchor_bench.data.motion import MotionData
+from anchor_bench.data.sage import load_sage_motion
 
 @dataclass(frozen=True)
 class SignalComparison:
@@ -55,7 +44,7 @@ class SimRun:
 @dataclass(frozen=True)
 class JointOverlay:
     actuator_model: str
-    trace: SageTrace
+    trace: MotionData
     sim_joint_idx: int
     position: SignalComparison
     velocity: SignalComparison
@@ -86,69 +75,16 @@ class EndEffectorFkUnavailable(RuntimeError):
     """Raised when forward kinematics solver is unavailable in the current runtime."""
 
 
-def _interpolate_matrix(source_time: np.ndarray, values: np.ndarray, target_time: np.ndarray) -> np.ndarray:
-    values = np.asarray(values, dtype=float)
-    if values.ndim != 2:
-        raise ValueError("trace vectors must be a 2-D matrix")
-    columns = [np.interp(target_time, source_time, values[:, idx]) for idx in range(values.shape[1])]
-    return np.column_stack(columns) if columns else np.empty((len(target_time), 0), dtype=float)
-
-
-def _uniform_grid(start: float, end: float, sample_dt: float) -> np.ndarray:
-    if sample_dt <= 0.0:
-        raise ValueError("analysis.sample_dt must be positive")
-    span = end - start
-    count = int(round(span / sample_dt)) + 1
-    drift = abs(span - (count - 1) * sample_dt)
-    if drift > 0.5 * sample_dt:
-        raise ValueError(
-            f"timestamp span {span} is not a multiple of analysis.sample_dt {sample_dt} "
-            f"(drift {drift} exceeds half a step)"
-        )
-    return np.asarray([round(float(start + index * sample_dt), 12) for index in range(count)], dtype=float)
-
-
-def _resample_trace(trace: SageTrace, sample_dt: float) -> SageTrace:
-    if trace.control_time.size == 0 or trace.state_time.size == 0:
-        raise ValueError("cannot resample an empty trace")
-    start = max(float(trace.control_time[0]), float(trace.state_time[0]))
-    end = min(float(trace.control_time[-1]), float(trace.state_time[-1]))
-    if end < start:
-        raise ValueError("control and state traces do not overlap in time")
-    target_time = _uniform_grid(start, end, sample_dt)
-    return SageTrace(
-        joint_names=trace.joint_names,
-        control_time=target_time,
-        control_positions=_interpolate_matrix(trace.control_time, trace.control_positions, target_time),
-        state_time=target_time,
-        positions=_interpolate_matrix(trace.state_time, trace.positions, target_time),
-        velocities=_interpolate_matrix(trace.state_time, trace.velocities, target_time),
-        torques=_interpolate_matrix(trace.state_time, trace.torques, target_time),
+def _read_trace(folder: Path, sample_dt: float | None = None) -> MotionData:
+    motion = load_sage_motion(
+        folder,
+        target_dt=sample_dt,
+        require_velocity=True,
+        require_effort=True,
     )
-
-
-def _read_trace(folder: Path, sample_dt: float | None = None) -> SageTrace:
-    joint_names = load_joint_list(folder / "joint_list.txt")
-    control_time, control_vectors = load_vector_csv(folder / "control.csv", ("positions",))
-    state_time, state_vectors = load_vector_csv(folder / "state_motor.csv", ("positions", "velocities", "torques"))
-    trace = SageTrace(
-        joint_names=joint_names,
-        control_time=_time_to_seconds(control_time),
-        control_positions=control_vectors["positions"],
-        state_time=_time_to_seconds(state_time),
-        positions=state_vectors["positions"],
-        velocities=state_vectors["velocities"],
-        torques=state_vectors["torques"],
-    )
-    if sample_dt is not None:
-        return _resample_trace(trace, float(sample_dt))
-    return trace
-
-
-def _time_to_seconds(values: np.ndarray) -> np.ndarray:
-    if values.size and np.nanmax(np.abs(values)) > 1000:
-        return values / 1e6
-    return values
+    assert motion.velocity is not None
+    assert motion.effort is not None
+    return motion
 
 
 def _rmse(sim_values: np.ndarray, real_values: np.ndarray) -> float:
@@ -362,7 +298,7 @@ def _plot_joint_overlay(
     dataset: str,
     motion: str,
     joint: str,
-    real_trace: SageTrace,
+    real_trace: MotionData,
     real_joint_idx: int,
     overlays: list[JointOverlay],
 ) -> None:
@@ -370,15 +306,15 @@ def _plot_joint_overlay(
     fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
 
     axes[0].plot(
-        real_trace.control_time,
-        real_trace.control_positions[:, real_joint_idx],
+        real_trace.command_position.time,
+        real_trace.command_position.values[:, real_joint_idx],
         color="#f2a6a6",
         label="Real command",
         linewidth=1.0,
     )
     axes[0].plot(
-        real_trace.state_time,
-        real_trace.positions[:, real_joint_idx],
+        real_trace.position.time,
+        real_trace.position.values[:, real_joint_idx],
         color="#b00020",
         linestyle="--",
         label="Real position",
@@ -396,7 +332,7 @@ def _plot_joint_overlay(
     axes[0].legend(loc="best")
     axes[0].grid(True)
 
-    axes[1].plot(real_trace.state_time, real_trace.velocities[:, real_joint_idx], color="#b00020", linestyle="--", label="Real velocity", linewidth=1.2)
+    axes[1].plot(real_trace.velocity.time, real_trace.velocity.values[:, real_joint_idx], color="#b00020", linestyle="--", label="Real velocity", linewidth=1.2)
     for overlay in overlays:
         axes[1].plot(
             overlay.velocity.sim_time,
@@ -409,7 +345,7 @@ def _plot_joint_overlay(
     axes[1].legend(loc="best")
     axes[1].grid(True)
 
-    axes[2].plot(real_trace.state_time, real_trace.torques[:, real_joint_idx], color="#b00020", linestyle="--", label="Real torque", linewidth=1.2)
+    axes[2].plot(real_trace.effort.time, real_trace.effort.values[:, real_joint_idx], color="#b00020", linestyle="--", label="Real torque", linewidth=1.2)
     for overlay in overlays:
         axes[2].plot(
             overlay.torque.sim_time,
@@ -574,7 +510,7 @@ class IsaacLabNewtonRobotFk:
             sim_cfg.physics = NewtonCfg(
                 solver_cfg=MJWarpSolverCfg(
                     integrator=sim_cfg_data.integrator or "implicitfast",
-                    ls_iterations=sim_cfg_data.ls_iterations or sim_cfg_data.line_search_iterations or 10,
+                    ls_iterations=sim_cfg_data.line_search_iterations or 10,
                     iterations=sim_cfg_data.solver_iterations or 10,
                 ),
             )
@@ -672,7 +608,7 @@ def _load_analysis_group(
     key: tuple[int | None, str, str],
     runs: list[SimRun],
     sample_dt: float | None,
-) -> tuple[SageTrace, list[tuple[SimRun, SageTrace]], list[str]] | None:
+) -> tuple[MotionData, list[tuple[SimRun, MotionData]], list[str]] | None:
     seed, dataset, _motion = key
     real_folder = _real_folder(result_root, robot_name, seed, dataset, runs[0].motion_rel)
     if not (real_folder / "state_motor.csv").exists():
@@ -693,8 +629,8 @@ def _load_analysis_group(
 def _compare_joint_group(
     rows: list[list[str]],
     key: tuple[int | None, str, str],
-    real_trace: SageTrace,
-    sim_traces: list[tuple[SimRun, SageTrace]],
+    real_trace: MotionData,
+    sim_traces: list[tuple[SimRun, MotionData]],
     joints: list[str],
 ) -> dict[str, list[JointOverlay]]:
     seed, dataset, motion = key
@@ -706,12 +642,21 @@ def _compare_joint_group(
                 continue
             sim_idx = sim_trace.joint_names.index(joint)
             real_idx = real_trace.joint_names.index(joint)
+            assert sim_trace.velocity is not None
+            assert sim_trace.effort is not None
+            assert real_trace.velocity is not None
+            assert real_trace.effort is not None
             comparisons = [
-                _compare_signal(sim_trace.state_time, sim_values[:, sim_idx], real_trace.state_time, real_values[:, real_idx])
-                for sim_values, real_values in (
-                    (sim_trace.positions, real_trace.positions),
-                    (sim_trace.velocities, real_trace.velocities),
-                    (sim_trace.torques, real_trace.torques),
+                _compare_signal(
+                    sim_signal.time,
+                    sim_signal.values[:, sim_idx],
+                    real_signal.time,
+                    real_signal.values[:, real_idx],
+                )
+                for sim_signal, real_signal in (
+                    (sim_trace.position, real_trace.position),
+                    (sim_trace.velocity, real_trace.velocity),
+                    (sim_trace.effort, real_trace.effort),
                 )
             ]
             position, velocity, torque = comparisons
@@ -740,7 +685,7 @@ def _plot_joint_group(
     plt,
     output_root: Path,
     key: tuple[int | None, str, str],
-    real_trace: SageTrace,
+    real_trace: MotionData,
     overlays: dict[str, list[JointOverlay]],
 ) -> None:
     seed, dataset, motion = key
@@ -764,20 +709,20 @@ def _compare_end_effector_group(
     plt,
     output_root: Path,
     key: tuple[int | None, str, str],
-    real_trace: SageTrace,
-    sim_traces: list[tuple[SimRun, SageTrace]],
+    real_trace: MotionData,
+    sim_traces: list[tuple[SimRun, MotionData]],
     fk: EndEffectorFk,
 ) -> None:
     seed, dataset, motion = key
-    real_xyz = np.asarray(fk(real_trace.joint_names, real_trace.positions), dtype=float)
+    real_xyz = np.asarray(fk(real_trace.joint_names, real_trace.position.values), dtype=float)
     comparisons: list[EndEffectorComparison] = []
     for run, sim_trace in sim_traces:
-        sim_xyz = np.asarray(fk(sim_trace.joint_names, sim_trace.positions), dtype=float)
+        sim_xyz = np.asarray(fk(sim_trace.joint_names, sim_trace.position.values), dtype=float)
         comparison = _compare_ee(
             run.actuator_model,
-            sim_trace.state_time,
+            sim_trace.position.time,
             sim_xyz,
-            real_trace.state_time,
+            real_trace.position.time,
             real_xyz,
         )
         comparisons.append(comparison)

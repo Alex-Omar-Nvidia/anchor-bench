@@ -10,10 +10,10 @@ import yaml
 
 from anchor_bench.core.run_config import resolve_simulation_timing
 from anchor_bench.core.schemas import CMAESConfig, RobotRunFile, SysIdBoundsFile
-from anchor_bench.data.sage import load_real_data
+from anchor_bench.data.sage import load_sage_motion
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.runtime.assets import resolve_runtime_asset
-from anchor_bench.runtime.robot_config import build_implicit_actuator_params, load_sysid_bounds
+from anchor_bench.runtime.robot_config import build_fitted_actuator_document, build_implicit_actuator_params, load_sysid_bounds
 from anchor_bench.runtime.simulation import create_newton_scene, joint_ids_for
 from anchor_bench.runtime.robot_scene import (
     _write_viscous_friction,
@@ -133,9 +133,9 @@ def run_robot_sysid(
         output_path = Path(output)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        dataset = load_real_data(data, target_dt=control_dt, joint_names=joint_names)
-        commands = dataset.control_positions
-        measured = dataset.state_positions
+        dataset = load_sage_motion(data, target_dt=control_dt, joint_names=joint_names)
+        commands = dataset.command_position.values.tolist()
+        measured = dataset.position.values.tolist()
         if max_trajectory_len is not None:
             commands = commands[:max_trajectory_len]
             measured = measured[:max_trajectory_len]
@@ -268,13 +268,22 @@ def run_robot_sysid(
                 f"({max_iter} generations exhausted). Check for NaN MSE / sim divergence "
                 "before consuming best_params.yaml."
             )
-        result = dict(best_params)
-        result["best_mse"] = best_score
-        result["robot_name"] = robot_name
-        result["mode"] = "all_joints" if joint_names == all_joint_names else "selected_joints"
-        result["joints"] = joint_names
-        result["data_source"] = data
-        (output_path / "best_params.yaml").write_text(yaml.safe_dump(result, sort_keys=False), encoding="utf-8")
+        document = build_fitted_actuator_document(
+            bundle,
+            best_params,
+            metadata={
+                "source": "sysid",
+                "best_mse": best_score,
+                "robot_name": robot_name,
+                "mode": "all_joints" if joint_names == all_joint_names else "selected_joints",
+                "joints": joint_names,
+                "data_source": data,
+            },
+        )
+        (output_path / "best_params.yaml").write_text(
+            yaml.safe_dump(document, sort_keys=False),
+            encoding="utf-8",
+        )
         _log(f"Best parameters saved to {output_path / 'best_params.yaml'}")
         return output_path
     finally:

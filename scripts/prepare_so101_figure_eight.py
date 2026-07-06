@@ -20,10 +20,7 @@ SOURCE_URL = (
 )
 SOURCE_COMMIT = "04cd282fadd4ea589c1181c5bb150667859757f6"
 SOURCE_SHA256 = "49531adaf02ef0ec468c7593467d45a5718596118fa7834f41e13c07534efe8b"
-DEFAULT_SOURCE = Path(
-    "inputs/datasets/so101/so101_arm_50motion/"
-    "so101-sysid-50motion-train-figure-eight.parquet"
-)
+DEFAULT_SOURCE = Path("inputs/datasets/so101/so101_arm_50motion/so101-sysid-50motion-train-figure-eight.parquet")
 DEFAULT_OUTPUT = Path("inputs/datasets/so101/custom_figure8_with_camera")
 
 JOINTS = (
@@ -85,43 +82,6 @@ def _vector_rows(frame: Any, row_type: str, origin_ns: int, *signals: Any) -> li
     return rows
 
 
-def _write_training_views(
-    output: Path,
-    commands: Any,
-    positions: Any,
-    velocities: Any,
-    torques: Any,
-    origin_ns: int,
-) -> None:
-    import numpy as np
-    import pandas as pd
-
-    state_time = positions.index.to_numpy(dtype="int64")
-    command_time = commands.index.to_numpy(dtype="int64")
-    split_index = max(1, min(len(state_time) - 1, int(round(len(state_time) * 0.8))))
-    for _, joint in JOINTS:
-        command = np.interp(
-            state_time.astype("float64"),
-            command_time.astype("float64"),
-            commands[joint].to_numpy(dtype="float64"),
-        )
-        position = positions[joint].to_numpy(dtype="float64")
-        frame = pd.DataFrame(
-            {
-                "timestamp": (state_time - origin_ns) / 1e9,
-                "command_position": command,
-                "position": position,
-                "position_error": command - position,
-                "velocity": velocities[joint].to_numpy(dtype="float64"),
-                "torque": torques[joint].to_numpy(dtype="float64"),
-            }
-        )
-        joint_dir = output / "training" / joint
-        joint_dir.mkdir(parents=True, exist_ok=True)
-        frame.iloc[:split_index].to_csv(joint_dir / "segment_00.csv", index=False)
-        frame.iloc[split_index:].to_csv(joint_dir / "segment_01.csv", index=False)
-
-
 def convert(source: Path, output: Path) -> None:
     try:
         import pandas as pd
@@ -139,9 +99,7 @@ def convert(source: Path, output: Path) -> None:
     torques = _signal_frame(frame, "tau_abs")
     load_signals = _signal_frame(frame, "present_load_raw")
     state_index = (
-        positions.index.intersection(velocities.index)
-        .intersection(torques.index)
-        .intersection(load_signals.index)
+        positions.index.intersection(velocities.index).intersection(torques.index).intersection(load_signals.index)
     )
     if state_index.empty:
         raise ValueError("actual_q, dq, tau_abs, and present_load_raw signals have no common timestamps")
@@ -165,8 +123,6 @@ def convert(source: Path, output: Path) -> None:
         writer = csv.writer(stream)
         writer.writerow(["type", "timestamp", "positions", "velocities", "torques"])
         writer.writerows(_vector_rows(positions, "STATE_MOTOR", origin_ns, velocities, torques))
-    _write_training_views(output, commands, positions, velocities, torques, origin_ns)
-
     metadata = {
         "schema": "sage",
         "time_unit": "seconds",
@@ -185,7 +141,6 @@ def convert(source: Path, output: Path) -> None:
             "state_torque_sign": "*/present_load_raw",
         },
         "torque_semantics": "tau_abs magnitude multiplied by sign(present_load_raw)",
-        "training_views": "training/<joint>/segment_00.csv and segment_01.csv",
         "unit_note": (
             "The Anchor-Lab dataset card does not provide a full per-field data dictionary. "
             "Validate q/dq/tau_abs units against the source hardware calibration before fitting."
@@ -195,10 +150,7 @@ def convert(source: Path, output: Path) -> None:
         yaml.safe_dump(metadata, sort_keys=False),
         encoding="utf-8",
     )
-    print(
-        f"wrote {len(commands)} control rows, {len(positions)} state rows, "
-        f"and per-joint training views to {output}"
-    )
+    print(f"wrote {len(commands)} control rows and {len(positions)} state rows to {output}")
 
 
 def main(argv: list[str] | None = None) -> int:

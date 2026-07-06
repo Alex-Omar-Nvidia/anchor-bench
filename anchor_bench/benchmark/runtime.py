@@ -12,9 +12,8 @@ from anchor_bench.core.run_config import resolve_simulation_timing
 from anchor_bench.benchmark.init_sync import (
     BenchmarkInitialState,
     apply_benchmark_initial_states,
-    load_benchmark_initial_state,
 )
-from anchor_bench.data.sage import load_real_data
+from anchor_bench.data.sage import load_sage_motion
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.runtime.assets import resolve_runtime_asset
 from anchor_bench.runtime.simulation import create_newton_scene, joint_ids_for
@@ -43,6 +42,20 @@ def _write_sage(folder: Path, joint_names: list[str], control_rows, state_rows) 
         writer = csv.writer(stream)
         writer.writerow(["type", "timestamp", "positions", "velocities", "torques"])
         writer.writerows(state_rows)
+    (folder / "metadata.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema": "sage",
+                "time_unit": "microseconds",
+                "position_unit": "rad",
+                "velocity_unit": "rad/s",
+                "torque_unit": "N*m",
+                "source": "anchor-bench simulation",
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _copy_real_sage(source: Path, destination: Path) -> None:
@@ -135,31 +148,6 @@ def _build_run_summary(
     }
 
 
-def run_robot_benchmark(
-    robot_name: str,
-    motion: str,
-    output: str = "outputs/sim2real_benchmark",
-    headless: bool = False,
-    motion_name: str | None = None,
-    actuator_params: str | None = None,
-    dataset: str | None = None,
-    actuator_model: str | None = None,
-    seed: int | None = None,
-) -> Path:
-    return run_robot_benchmark_batch(
-        robot_name,
-        motions=[RobotBenchmarkMotion(motion=motion, motion_name=motion_name)],
-        output=output,
-        headless=headless,
-        actuator_params=actuator_params,
-        dataset=dataset,
-        actuator_model=actuator_model,
-        seed=seed,
-        num_envs=1,
-        batch_index=0,
-    )
-
-
 def run_robot_benchmark_batch(  # noqa: C901
     robot_name: str,
     motions: list[RobotBenchmarkMotion],
@@ -200,10 +188,19 @@ def run_robot_benchmark_batch(  # noqa: C901
         loaded_motions: list[_LoadedBenchmarkMotion] = []
         for spec in motions:
             motion_path = Path(spec.motion)
-            real_data = load_real_data(motion_path, target_dt=1.0 / control_freq, joint_names=joint_names)
-            initial_state = load_benchmark_initial_state(motion_path, joint_names) if real_init_pose_sync else None
-            commands = real_data.control_positions
-            timestamps = real_data.control_timestamps
+            source_motion = load_sage_motion(motion_path, joint_names=joint_names)
+            source_initial = source_motion.initial_state() if real_init_pose_sync else None
+            initial_state = (
+                BenchmarkInitialState(
+                    positions=source_initial.positions.tolist(),
+                    velocities=source_initial.velocities.tolist() if source_initial.velocities is not None else None,
+                )
+                if source_initial is not None
+                else None
+            )
+            real_data = source_motion.resample(1.0 / control_freq)
+            commands = real_data.command_position.values.tolist()
+            timestamps = real_data.command_position.time.tolist()
             if not commands:
                 raise ValueError(f"No SAGE rows found in {spec.motion}")
             if len(timestamps) != len(commands):

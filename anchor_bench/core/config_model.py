@@ -81,8 +81,6 @@ class ConfigModel(BaseModel):
             data = {}
         if not isinstance(data, Mapping):
             raise ValueError(f"{text_context} must be a mapping")
-        if "model_type" in data:
-            raise ValueError(f"{text_context} uses legacy model_type")
         try:
             return cls.model_validate(dict(data))
         except ValidationError as exc:

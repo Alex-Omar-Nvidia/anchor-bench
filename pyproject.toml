@@ -33,7 +33,6 @@ full = [
   "scipy",
   "pandas",
   "pyarrow",
-  "tqdm",
   "matplotlib",
 ]
 

@@ -32,9 +32,15 @@ SAGE folder ignored, and records source URL, commit, signal mapping, and unit
 caveats in `metadata.yaml`. Signed torque is reconstructed from the provided
 `tau_abs` magnitude and `present_load_raw` sign; this inference should be
 checked against the source hardware calibration before physical conclusions.
-The conversion also writes two contiguous scalar CSV segments per joint under
-`training/<joint>/`, matching the native GRU trainer's feature contract.
 
+## Fitted Actuator Parameters
+
+SysID writes `best_params.yaml` as a complete schema-v2 actuator document.
+It has the same `schema_version`, `backend`, and `actuators` structure as
+the robot's canonical `actuators.yaml`; fit provenance and metrics live under
+the optional top-level `metadata` mapping. The file can be passed directly to
+`anchor-bench benchmark --actuator-params` or deliberately promoted to
+`inputs/actuator_params/<robot>/`.
 
 ## Neural Actuator Artifacts
 

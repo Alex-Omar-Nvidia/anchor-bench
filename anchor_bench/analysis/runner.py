@@ -76,25 +76,6 @@ def build_resolved_analysis_command(resolved: ResolvedAnalysisRunConfig) -> Comm
     )
 
 
-def build_analysis_command(
-    robot: str,
-    result_folder: str | None = None,
-    output: str | None = None,
-    dry_run: bool = True,
-    require_end_effector: bool = False,
-    motions: str | list[str] | None = None,
-) -> CommandPlan:
-    resolved = resolve_analysis_run_config(
-        robot,
-        result_folder=result_folder,
-        output=output,
-        dry_run=dry_run,
-        require_end_effector=require_end_effector,
-        motions=motions,
-    )
-    return build_resolved_analysis_command(resolved)
-
-
 def run_resolved_analysis(resolved: ResolvedAnalysisRunConfig) -> CommandPlan:
     plan = build_resolved_analysis_command(resolved)
     if resolved.dry_run:
@@ -117,22 +98,3 @@ def run_resolved_analysis(resolved: ResolvedAnalysisRunConfig) -> CommandPlan:
         sample_dt=resolved.sample_dt,
     )
     return plan
-
-
-def run_analysis(
-    robot: str,
-    result_folder: str | None = None,
-    output: str | None = None,
-    dry_run: bool = True,
-    require_end_effector: bool = False,
-    motions: str | list[str] | None = None,
-) -> CommandPlan:
-    resolved = resolve_analysis_run_config(
-        robot,
-        result_folder=result_folder,
-        output=output,
-        dry_run=dry_run,
-        require_end_effector=require_end_effector,
-        motions=motions,
-    )
-    return run_resolved_analysis(resolved)

@@ -26,9 +26,7 @@ def create_newton_scene(
     sim_cfg.physics = NewtonCfg(
         solver_cfg=MJWarpSolverCfg(
             integrator=simulation_config.integrator or "implicitfast",
-            ls_iterations=simulation_config.ls_iterations
-            or simulation_config.line_search_iterations
-            or 10,
+            ls_iterations=simulation_config.line_search_iterations or 10,
             iterations=simulation_config.solver_iterations or 10,
         )
     )

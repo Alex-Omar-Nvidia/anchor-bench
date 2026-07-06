@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from anchor_bench.core.paths import repo_root
+from anchor_bench.core.run_schema import SimulationDefaults
 
 
 @dataclass(frozen=True)
@@ -37,11 +38,11 @@ def _positive_int(name: str, value: Any, context: str) -> int:
     return resolved
 
 
-def resolve_simulation_timing(sim_cfg: Mapping[str, Any] | None, context: str) -> SimulationTiming:
-    cfg = sim_cfg or {}
-    physics_freq = _positive_int("physics_freq", cfg.get("physics_freq", 500), context)
-    control_freq = _positive_int("control_freq", cfg.get("control_freq", physics_freq), context)
-    render_freq = _positive_int("render_freq", cfg.get("render_freq", control_freq), context)
+def resolve_simulation_timing(sim_cfg: SimulationDefaults | None, context: str) -> SimulationTiming:
+    cfg = sim_cfg or SimulationDefaults()
+    physics_freq = _positive_int("physics_freq", cfg.physics_freq or 500, context)
+    control_freq = _positive_int("control_freq", cfg.control_freq or physics_freq, context)
+    render_freq = _positive_int("render_freq", cfg.render_freq or control_freq, context)
     if physics_freq % control_freq != 0:
         raise ValueError(f"{context} requires physics_freq divisible by control_freq")
     if physics_freq % render_freq != 0:

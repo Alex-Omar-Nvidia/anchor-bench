@@ -132,7 +132,6 @@ class DockerSetupTests(unittest.TestCase):
         self.assertIn("[repo structure](docs/repo-structure.md)", readme)
         self.assertIn("[Artifacts](docs/artifacts.md)", readme)
         self.assertIn("[Robot plugins](docs/robot-plugin.md)", readme)
-        self.assertIn("[Newton 1.2 migration](docs/migration-newton-1.2.md)", readme)
         self.assertIn("run.yaml", readme)
         self.assertIn("custom_figure8_with_camera", readme)
 
