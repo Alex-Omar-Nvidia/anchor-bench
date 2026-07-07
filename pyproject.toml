@@ -33,6 +33,7 @@ full = [
   "scipy",
   "pandas",
   "pyarrow",
+  "huggingface_hub>=0.34",
   "matplotlib",
 ]
 

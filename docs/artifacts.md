@@ -24,6 +24,8 @@ plots under `outputs/sim2real_analysis/plots/<dataset>/<motion>/...`.
 
 Import every parquet below a Hugging Face dataset folder with:
 
+The importer uses `huggingface_hub` for authenticated repository traversal, cached downloads, and retries, then verifies published LFS SHA-256 values before conversion.
+
 ```bash
 python scripts/prepare_huggingface_parquets.py \
   https://huggingface.co/datasets/nvidia/Anchor-Lab/tree/main/data/so101_arm_50motion

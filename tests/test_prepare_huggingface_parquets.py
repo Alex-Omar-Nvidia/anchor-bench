@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
-import io
-import json
 import sys
 import tempfile
 import unittest
@@ -22,16 +20,6 @@ def load_script():
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
-
-
-class _Response(io.BytesIO):
-    headers: dict[str, str] = {}
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
 
 
 class PrepareHuggingFaceParquetsTests(unittest.TestCase):
@@ -74,11 +62,12 @@ class PrepareHuggingFaceParquetsTests(unittest.TestCase):
                 "lfs": {"oid": "c" * 64},
             },
         ]
-        opener = mock.Mock(return_value=_Response(json.dumps(payload).encode()))
+        api = mock.Mock()
+        api.list_repo_tree.return_value = payload
 
         entries = self.module._list_huggingface_parquets(
             "https://huggingface.co/datasets/org/repo/tree/main/data/robot_trials",
-            opener=opener,
+            api=api,
         )
 
         self.assertEqual(["heldout", "train", "validation"], sorted(entry.split for entry in entries))
@@ -86,7 +75,7 @@ class PrepareHuggingFaceParquetsTests(unittest.TestCase):
         self.assertEqual("g1-arm-antiphase-trial-004", by_split["train"].motion)
         self.assertEqual("nested--chirp", by_split["validation"].motion)
         self.assertEqual("square-pattern", by_split["heldout"].motion)
-        self.assertIn("recursive=true", opener.call_args.args[0])
+        self.assertTrue(api.list_repo_tree.call_args.kwargs["recursive"])
 
     def test_regular_non_lfs_parquet_is_supported_without_expected_checksum(self):
         payload = [
@@ -97,9 +86,11 @@ class PrepareHuggingFaceParquetsTests(unittest.TestCase):
             }
         ]
 
+        api = mock.Mock()
+        api.list_repo_tree.return_value = payload
         entries = self.module._list_huggingface_parquets(
             "https://huggingface.co/datasets/org/repo/tree/main/data/demo",
-            opener=mock.Mock(return_value=_Response(json.dumps(payload).encode())),
+            api=api,
         )
 
         self.assertIsNone(entries[0].sha256)
@@ -119,19 +110,21 @@ class PrepareHuggingFaceParquetsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
-            def fake_download(url, destination):
-                self.assertEqual(entry.url, url)
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_bytes(content)
+            folder = self.module.HuggingFaceFolder("org/repo", "main", "data/demo")
 
-            with mock.patch.object(self.module, "_download_url", side_effect=fake_download):
-                source = self.module._verified_source(entry, root, no_download=False)
+            def fake_download(**kwargs):
+                self.assertEqual(entry.path, kwargs["filename"])
+                cached = root / "hub-cache.parquet"
+                cached.write_bytes(content)
+                return str(cached)
+
+            source = self.module._verified_source(entry, folder, root, no_download=False, downloader=fake_download)
 
             self.assertEqual(root / "nested" / "robot-train-demo.parquet", source)
             self.assertEqual(content, source.read_bytes())
             source.write_bytes(b"changed")
             with self.assertRaisesRegex(ValueError, "SHA-256 mismatch"):
-                self.module._verified_source(entry, root, no_download=True)
+                self.module._verified_source(entry, folder, root, no_download=True)
 
     def test_discovers_so101_g1_and_h1_signal_conventions(self):
         so101 = self.module._discover_signal_fields(
@@ -188,7 +181,7 @@ class PrepareHuggingFaceParquetsTests(unittest.TestCase):
             root = Path(tmp)
             converted = []
 
-            def fake_source(remote, download_dir, *, no_download):
+            def fake_source(remote, folder, download_dir, *, no_download):
                 return download_dir / remote.relative_path
 
             def fake_convert(source, output, **provenance):

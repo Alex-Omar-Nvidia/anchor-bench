@@ -4,19 +4,17 @@
 from __future__ import annotations
 
 import argparse
-import csv
+import shutil
 import hashlib
-import json
 import re
 import sys
-import urllib.request
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping, Sequence
 from urllib.parse import quote, unquote, urlparse
 
-import yaml
+from anchor_bench.data.validation import write_sage_motion
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -128,45 +126,44 @@ def _motion_identity(remote_path: str, folder_path: str) -> tuple[str, str, str]
     return split, motion, relative.as_posix()
 
 
-def _next_link(response: Any) -> str | None:
-    headers = getattr(response, "headers", None)
-    link = headers.get("Link") if headers is not None else None
-    if not link:
+def _import_huggingface_hub():
+    try:
+        from huggingface_hub import HfApi, hf_hub_download
+    except ModuleNotFoundError as exc:
+        raise RuntimeError("Hugging Face import requires huggingface_hub; install anchor-bench[full]") from exc
+    return HfApi, hf_hub_download
+
+
+def _item_value(item: Any, name: str, default: Any = None) -> Any:
+    return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
+
+
+def _lfs_sha256(item: Any) -> str | None:
+    lfs = _item_value(item, "lfs")
+    if lfs is None:
         return None
-    for item in str(link).split(","):
-        match = re.match(r'\s*<([^>]+)>;\s*rel="next"\s*', item)
-        if match:
-            return match.group(1)
-    return None
+    digest = _item_value(lfs, "sha256", _item_value(lfs, "oid", ""))
+    return str(digest) if _SHA256.fullmatch(str(digest)) else None
 
 
-def _list_huggingface_parquets(
-    folder_url: str,
-    *,
-    opener: Callable[..., Any] = urllib.request.urlopen,
-) -> list[RemoteParquet]:
+def _list_huggingface_parquets(folder_url: str, *, api: Any | None = None) -> list[RemoteParquet]:
     folder = _parse_huggingface_folder(folder_url)
-    next_url: str | None = (
-        f"https://huggingface.co/api/datasets/{quote(folder.repo_id, safe='/')}/tree/"
-        f"{quote(folder.revision, safe='')}/{quote(folder.path, safe='/')}"
-        "?recursive=true&expand=false"
+    if api is None:
+        HfApi, _ = _import_huggingface_hub()
+        api = HfApi()
+    payload = api.list_repo_tree(
+        folder.repo_id,
+        path_in_repo=folder.path,
+        recursive=True,
+        expand=False,
+        revision=folder.revision,
+        repo_type="dataset",
     )
-    payload: list[Any] = []
-    while next_url is not None:
-        with opener(next_url) as response:
-            page = json.load(response)
-            following = _next_link(response)
-        if not isinstance(page, list):
-            raise ValueError(f"Hugging Face tree API returned an invalid response for {folder_url}")
-        payload.extend(page)
-        next_url = following
 
     entries: list[RemoteParquet] = []
     identities: set[tuple[str, str]] = set()
     for item in payload:
-        if not isinstance(item, dict) or item.get("type") != "file":
-            continue
-        remote_path = str(item.get("path", ""))
+        remote_path = str(_item_value(item, "path", ""))
         if not remote_path.lower().endswith(".parquet"):
             continue
         split, motion, relative_path = _motion_identity(remote_path, folder.path)
@@ -174,19 +171,15 @@ def _list_huggingface_parquets(
         if identity in identities:
             raise ValueError(f"multiple parquet files map to {split}/{motion}")
         identities.add(identity)
-        lfs = item.get("lfs")
-        digest = str(lfs.get("oid", "")) if isinstance(lfs, dict) else ""
-        expected_sha256 = digest if _SHA256.fullmatch(digest) else None
-        download_url = (
-            f"https://huggingface.co/datasets/{quote(folder.repo_id, safe='/')}/resolve/"
-            f"{quote(folder.revision, safe='')}/{quote(remote_path, safe='/')}"
-        )
         entries.append(
             RemoteParquet(
                 path=remote_path,
                 relative_path=relative_path,
-                url=download_url,
-                sha256=expected_sha256,
+                url=(
+                    f"https://huggingface.co/datasets/{quote(folder.repo_id, safe='/')}/resolve/"
+                    f"{quote(folder.revision, safe='')}/{quote(remote_path, safe='/')}"
+                ),
+                sha256=_lfs_sha256(item),
                 split=split,
                 motion=motion,
             )
@@ -196,23 +189,30 @@ def _list_huggingface_parquets(
     return sorted(entries, key=lambda entry: entry.path)
 
 
-def _download_url(url: str, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + ".part")
-    print(f"downloading {url}", flush=True)
-    try:
-        urllib.request.urlretrieve(url, temporary)
-        temporary.replace(destination)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _verified_source(entry: RemoteParquet, download_dir: Path, *, no_download: bool) -> Path:
+def _verified_source(
+    entry: RemoteParquet,
+    folder: HuggingFaceFolder,
+    download_dir: Path,
+    *,
+    no_download: bool,
+    downloader: Any | None = None,
+) -> Path:
     source = download_dir / PurePosixPath(entry.relative_path)
     if not source.exists():
         if no_download:
             raise ValueError(f"source parquet does not exist: {source}")
-        _download_url(entry.url, source)
+        if downloader is None:
+            _, downloader = _import_huggingface_hub()
+        cached = Path(
+            downloader(
+                repo_id=folder.repo_id,
+                filename=entry.path,
+                repo_type="dataset",
+                revision=folder.revision,
+            )
+        )
+        source.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cached, source)
     if entry.sha256 is not None:
         digest = _sha256(source)
         if digest != entry.sha256:
@@ -394,18 +394,7 @@ def convert_parquet(
         efforts = efforts * sign_signal.map(lambda value: -1.0 if value < 0.0 else 1.0 if value > 0.0 else 0.0)
     origin_ns = int(min(commands.index.min(), state_index.min()))
 
-    output.mkdir(parents=True, exist_ok=True)
     canonical_joints = [canonical for _, canonical in joint_pairs]
-    (output / "joint_list.txt").write_text("\n".join(canonical_joints) + "\n", encoding="utf-8")
-    with (output / "control.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["type", "timestamp", "positions"])
-        writer.writerows(_vector_rows(commands, "CONTROL", origin_ns))
-    with (output / "state_motor.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["type", "timestamp", "positions", "velocities", "torques"])
-        writer.writerows(_vector_rows(positions, "STATE_MOTOR", origin_ns, velocities, efforts))
-
     effort_semantics = signals.effort_kind
     if signals.effort_kind == "tau_abs":
         effort_semantics += "_signed_by_present_load_raw" if sign_applied else "_unsigned"
@@ -440,7 +429,13 @@ def convert_parquet(
             "the source robot's hardware calibration before physical conclusions."
         ),
     }
-    (output / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
+    write_sage_motion(
+        output,
+        canonical_joints,
+        _vector_rows(commands, "CONTROL", origin_ns),
+        _vector_rows(positions, "STATE_MOTOR", origin_ns, velocities, efforts),
+        metadata,
+    )
     print(f"wrote {len(commands)} control rows and {len(positions)} state rows to {output}")
 
 
@@ -495,7 +490,7 @@ def import_huggingface_folder(
     outputs: list[Path] = []
     for index, entry in enumerate(entries, start=1):
         print(f"[{index}/{len(entries)}] {entry.split}/{entry.motion}", flush=True)
-        source = _verified_source(entry, layout.download_dir, no_download=no_download)
+        source = _verified_source(entry, folder, layout.download_dir, no_download=no_download)
         output = layout.output_root / entry.split / entry.motion
         convert_parquet(
             source,
