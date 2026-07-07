@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import yaml
@@ -18,7 +18,7 @@ from anchor_bench.core.experiment_schema import (
 )
 from anchor_bench.core.paths import repo_root
 from anchor_bench.core.plan import CommandPlan
-from anchor_bench.data.validation import validate_sage_dir
+from anchor_bench.data.sage import is_sage_motion
 from anchor_bench.robots.registry import get_robot
 
 
@@ -67,17 +67,7 @@ class ResolvedExperimentConfig:
     analysis: ResolvedExperimentAnalysis
 
 
-@dataclass(frozen=True)
-class ExperimentBenchmarkRun:
-    robot: str
-    dataset: str
-    motion: str
-    motion_name: str
-    actuator_model: str
-    seed: int | None
-    actuator_params: str
-    output: str
-    headless: bool
+ExperimentBenchmarkRun = ResolvedBenchmarkRunConfig
 
 
 @dataclass(frozen=True)
@@ -208,21 +198,13 @@ def load_experiment_config(path: str | Path) -> ResolvedExperimentConfig:
     )
 
 
-def _is_valid_sage_folder(path: Path) -> bool:
-    try:
-        validate_sage_dir(path)
-    except (OSError, ValueError, yaml.YAMLError):
-        return False
-    return True
-
-
 def _discover_motions(dataset_name: str, dataset_cfg: ExperimentDataset) -> list[tuple[str, Path]]:
     real_root = _as_repo_path(dataset_cfg.real_root)
     motions = dataset_cfg.motions
     if motions is None or motions == "*":
         if not real_root.exists():
             raise ExperimentConfigError(f"dataset {dataset_name} real_root does not exist: {real_root}")
-        discovered = [(path.name, path) for path in sorted(real_root.iterdir()) if path.is_dir() and _is_valid_sage_folder(path)]
+        discovered = [(path.name, path) for path in sorted(real_root.iterdir()) if is_sage_motion(path)]
         if not discovered:
             raise ExperimentConfigError(f"dataset {dataset_name} has no valid SAGE child folders under {real_root}")
         return discovered
@@ -238,7 +220,7 @@ def _discover_motions(dataset_name: str, dataset_cfg: ExperimentDataset) -> list
             motion_path = real_root / motion_name
         if not motion_name:
             raise ExperimentConfigError(f"dataset {dataset_name} has a motion without a name")
-        if not _is_valid_sage_folder(motion_path):
+        if not is_sage_motion(motion_path):
             raise ExperimentConfigError(f"motion {motion_name} is not a valid SAGE folder: {motion_path}")
         selected.append((motion_name, motion_path))
     return selected
@@ -304,7 +286,7 @@ def expand_benchmark_runs(
                 actuator_params = _resolve_actuator_params(actuator_name, actuator_cfg, seed, dry_run=dry_run, warnings=warnings)
                 for motion_name, motion_path in motions:
                     runs.append(
-                        ExperimentBenchmarkRun(
+                        ResolvedBenchmarkRunConfig(
                             robot=config.robot,
                             dataset=dataset_name,
                             motion=str(motion_path),
@@ -314,6 +296,7 @@ def expand_benchmark_runs(
                             actuator_params=actuator_params,
                             output=output,
                             headless=bool(config.benchmark.headless),
+                            dry_run=dry_run,
                         )
                     )
     return runs
@@ -323,6 +306,8 @@ def _batch_benchmark_runs(config: ResolvedExperimentConfig, runs: list[Experimen
     num_envs = int(config.benchmark.num_envs)
     groups: dict[tuple[str, str, str, int | None, str, str, bool], list[ExperimentBenchmarkRun]] = {}
     for run in runs:
+        if run.dataset is None or run.actuator_model is None or run.actuator_params is None:
+            raise ExperimentConfigError("expanded benchmark runs require dataset, actuator model, and parameters")
         key = (run.robot, run.dataset, run.actuator_model, run.seed, run.actuator_params, run.output, run.headless)
         groups.setdefault(key, []).append(run)
 
@@ -358,18 +343,7 @@ def expand_benchmark_batches(
 
 
 def _benchmark_command_for_run(run: ExperimentBenchmarkRun, dry_run: bool) -> list[str]:
-    return build_resolved_benchmark_command(ResolvedBenchmarkRunConfig(
-        robot=run.robot,
-        motion=run.motion,
-        output=run.output,
-        dry_run=dry_run,
-        headless=run.headless,
-        motion_name=run.motion_name,
-        actuator_params=run.actuator_params,
-        dataset=run.dataset,
-        actuator_model=run.actuator_model,
-        seed=run.seed,
-    )).command
+    return build_resolved_benchmark_command(replace(run, dry_run=dry_run)).command
 
 
 def _build_experiment_benchmark_plan(

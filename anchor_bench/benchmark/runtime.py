@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import csv
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +12,7 @@ from anchor_bench.benchmark.init_sync import (
     apply_benchmark_initial_states,
 )
 from anchor_bench.data.sage import load_sage_motion
+from anchor_bench.data.sage import copy_sage_motion, write_sage_motion
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.runtime.assets import resolve_runtime_asset
 from anchor_bench.runtime.simulation import create_newton_scene, joint_ids_for
@@ -32,38 +31,24 @@ def _log(message: str) -> None:
 
 
 def _write_sage(folder: Path, joint_names: list[str], control_rows, state_rows) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
-    (folder / "joint_list.txt").write_text("\n".join(joint_names) + "\n", encoding="utf-8")
-    with (folder / "control.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["type", "timestamp", "positions"])
-        writer.writerows(control_rows)
-    with (folder / "state_motor.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.writer(stream)
-        writer.writerow(["type", "timestamp", "positions", "velocities", "torques"])
-        writer.writerows(state_rows)
-    (folder / "metadata.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "schema": "sage",
-                "time_unit": "microseconds",
-                "position_unit": "rad",
-                "velocity_unit": "rad/s",
-                "torque_unit": "N*m",
-                "source": "anchor-bench simulation",
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    write_sage_motion(
+        folder,
+        joint_names,
+        control_rows,
+        state_rows,
+        {
+            "schema": "sage",
+            "time_unit": "microseconds",
+            "position_unit": "rad",
+            "velocity_unit": "rad/s",
+            "torque_unit": "N*m",
+            "source": "anchor-bench simulation",
+        },
     )
 
 
 def _copy_real_sage(source: Path, destination: Path) -> None:
-    destination.mkdir(parents=True, exist_ok=True)
-    for name in ("control.csv", "state_motor.csv", "joint_list.txt", "metadata.yaml"):
-        src = source / name
-        if src.exists():
-            shutil.copy2(src, destination / name)
+    copy_sage_motion(source, destination)
 
 
 def _timestamp_us_text(timestamp_s: float) -> str:

@@ -10,6 +10,7 @@ from typing import Any, Iterable, Sequence
 import numpy as np
 
 from anchor_bench.data.motion import MotionData
+from anchor_bench.data.sage import discover_sage_motions
 
 
 DEFAULT_INPUT_COLUMNS = ("position", "position_error", "velocity")
@@ -17,7 +18,6 @@ DEFAULT_TARGET_COLUMN = "torque"
 SUPPORTED_INPUT_COLUMNS = {"position", "position_error", "velocity", "solver_pd"}
 MODEL_CHOICES = {"gru", "hybrid_residual"}
 EPSILON_STD = 1.0e-8
-_SAGE_FILES = ("control.csv", "state_motor.csv", "joint_list.txt", "metadata.yaml")
 
 
 @dataclass(frozen=True)
@@ -33,23 +33,9 @@ class TrainingSource:
     joint: str | None = None
 
 
-def _is_sage_motion(path: Path) -> bool:
-    return path.is_dir() and all((path / name).is_file() for name in _SAGE_FILES)
-
-
 def discover_training_sources(root: str | Path) -> list[TrainingSource]:
     path = Path(root).expanduser()
-    if _is_sage_motion(path):
-        return [TrainingSource(path)]
-    motions = (
-        sorted(
-            candidate
-            for candidate in path.rglob("*")
-            if candidate.is_dir() and _is_sage_motion(candidate)
-        )
-        if path.exists()
-        else []
-    )
+    motions = discover_sage_motions(path)
     if not motions:
         raise ValueError(f"no SAGE motion folders found under {path}")
     return [TrainingSource(motion) for motion in motions]

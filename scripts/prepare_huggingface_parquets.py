@@ -14,7 +14,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
 from urllib.parse import quote, unquote, urlparse
 
-from anchor_bench.data.validation import write_sage_motion
+from anchor_bench.data.sage import write_sage_motion
 
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")

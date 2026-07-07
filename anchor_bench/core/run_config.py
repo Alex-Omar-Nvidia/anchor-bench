@@ -54,6 +54,39 @@ def resolve_simulation_timing(sim_cfg: SimulationDefaults | None, context: str) 
     )
 
 
+def resolve_value_with_source(
+    explicit: Any,
+    configured: Any,
+    fallback: Any = None,
+    *,
+    explicit_label: str = "cli",
+    configured_label: str = "run.yaml",
+    fallback_label: str = "fallback",
+) -> tuple[Any, str]:
+    if explicit is not None:
+        return explicit, explicit_label
+    if configured is not None:
+        return configured, configured_label
+    return fallback, fallback_label
+
+
+def config_source(
+    explicit: Any,
+    configured: Any,
+    *,
+    explicit_label: str = "cli",
+    configured_label: str = "run.yaml",
+    fallback_label: str = "fallback",
+) -> str:
+    return resolve_value_with_source(
+        explicit,
+        configured,
+        explicit_label=explicit_label,
+        configured_label=configured_label,
+        fallback_label=fallback_label,
+    )[1]
+
+
 def defaulted_value(explicit: Any, default: Any, fallback: Any = None) -> Any:
     return explicit if explicit is not None else default if default is not None else fallback
 

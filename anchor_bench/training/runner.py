@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from anchor_bench.actuators.loader import load_actuator_file
 from anchor_bench.core.plan import CommandPlan
-from anchor_bench.core.run_config import resolve_repo_path_text, resolve_required_text
-from anchor_bench.core.schemas import TrainingDefaults, TrainActuatorRunConfig
+from anchor_bench.core.run_config import resolve_repo_path_text, resolve_required_text, resolve_value_with_source
+from anchor_bench.core.schemas import TrainActuatorRunConfig
 from anchor_bench.robots.registry import get_robot
 from anchor_bench.training.data import (
     DEFAULT_INPUT_COLUMNS,
@@ -45,20 +45,6 @@ class ResolvedTrainActuatorRunConfig:
     config_sources: dict[str, str]
 
 
-def _pick_default(
-    explicit: Any,
-    defaults: TrainingDefaults,
-    key: str,
-    fallback: Any,
-) -> tuple[Any, str]:
-    if explicit is not None:
-        return explicit, "cli"
-    default = getattr(defaults, key)
-    if default is not None:
-        return default, "run.yaml"
-    return fallback, "fallback"
-
-
 def _positive_int(name: str, value: Any) -> int:
     resolved = int(value)
     if resolved < 1:
@@ -92,7 +78,7 @@ def resolve_train_actuator_run_config(config: TrainActuatorRunConfig) -> Resolve
     sources: dict[str, str] = {}
 
     def select(name: str, explicit: Any, fallback: Any) -> Any:
-        values[name], sources[name] = _pick_default(explicit, training_cfg, name, fallback)
+        values[name], sources[name] = resolve_value_with_source(explicit, getattr(training_cfg, name), fallback)
         return values[name]
 
     model = str(select("model", config.model, "gru"))

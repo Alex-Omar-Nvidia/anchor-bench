@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from anchor_bench.core.plan import CommandPlan
-from anchor_bench.core.run_config import resolve_repo_path_text, resolve_required_text
+from anchor_bench.core.run_config import config_source, resolve_repo_path_text, resolve_required_text
 from anchor_bench.core.schemas import CMAESConfig, SysIdRunConfig
 from anchor_bench.core.versions import load_external_versions
 from anchor_bench.robots.registry import get_robot
@@ -25,18 +25,6 @@ class ResolvedSysIdRunConfig:
     actuator_config: str
 
 
-def _config_source(
-    explicit: object,
-    configured: object,
-    *,
-    configured_label: str = "run.yaml",
-    fallback: str = "fallback",
-) -> str:
-    if explicit is not None:
-        return "cli"
-    return configured_label if configured is not None else fallback
-
-
 def resolve_sysid_run_config(config: SysIdRunConfig) -> ResolvedSysIdRunConfig:
     bundle = get_robot(config.robot)
     sysid_cfg = bundle.run_config.sysid
@@ -46,21 +34,21 @@ def resolve_sysid_run_config(config: SysIdRunConfig) -> ResolvedSysIdRunConfig:
     num_envs = sysid_cfg.num_envs if config.num_envs is None else config.num_envs
     max_iter = cmaes_cfg.max_iterations if config.max_iter is None else config.max_iter
     config_sources = {
-        "real_data_dir": _config_source(config.data, sysid_cfg.real_data_dir),
-        "output_dir": _config_source(config.output, sysid_cfg.output_dir),
-        "num_envs": _config_source(config.num_envs, sysid_cfg.num_envs),
-        "max_iter": _config_source(
+        "real_data_dir": config_source(config.data, sysid_cfg.real_data_dir),
+        "output_dir": config_source(config.output, sysid_cfg.output_dir),
+        "num_envs": config_source(config.num_envs, sysid_cfg.num_envs),
+        "max_iter": config_source(
             config.max_iter,
             cmaes_cfg.max_iterations,
             configured_label="run.yaml.sysid.cmaes.max_iterations",
         ),
-        "max_trajectory_len": _config_source(
-            config.max_trajectory_len, None, fallback="unset"
+        "max_trajectory_len": config_source(
+            config.max_trajectory_len, None, fallback_label="unset"
         ),
-        "seed": _config_source(config.seed, None, fallback="default"),
-        "joints": _config_source(None, sysid_cfg.joints),
-        "buffer_time": _config_source(None, sysid_cfg.buffer_time),
-        "cmaes": _config_source(None, sysid_cfg.cmaes),
+        "seed": config_source(config.seed, None, fallback_label="default"),
+        "joints": config_source(None, sysid_cfg.joints),
+        "buffer_time": config_source(None, sysid_cfg.buffer_time),
+        "cmaes": config_source(None, sysid_cfg.cmaes),
     }
     return ResolvedSysIdRunConfig(
         robot=config.robot,

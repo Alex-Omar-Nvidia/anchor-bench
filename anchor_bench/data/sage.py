@@ -2,13 +2,80 @@ from __future__ import annotations
 
 import ast
 import csv
+import shutil
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Iterable, Sequence
 
 import numpy as np
+import yaml
 
 from anchor_bench.data.motion import JointLayout, MotionData, MotionSignal
-from anchor_bench.data.validation import validate_sage_dir
+
+
+SAGE_FILES = ("control.csv", "state_motor.csv", "joint_list.txt", "metadata.yaml")
+
+
+def validate_sage_dir(data_dir: str | Path) -> dict[str, Any]:
+    root = Path(data_dir)
+    missing = [name for name in SAGE_FILES if not (root / name).is_file()]
+    if missing:
+        raise FileNotFoundError(f"{root} missing required SAGE files: {', '.join(missing)}")
+    metadata = yaml.safe_load((root / "metadata.yaml").read_text(encoding="utf-8")) or {}
+    expected = {
+        "time_unit": {"microseconds", "seconds"},
+        "position_unit": {"rad"},
+        "velocity_unit": {"rad/s"},
+        "torque_unit": {"N*m", "Nm"},
+    }
+    for key, allowed in expected.items():
+        if metadata.get(key) not in allowed:
+            raise ValueError(f"metadata.yaml {key} must be one of {sorted(allowed)}")
+    return metadata
+
+
+
+def is_sage_motion(path: str | Path) -> bool:
+    root = Path(path)
+    return root.is_dir() and all((root / name).is_file() for name in SAGE_FILES)
+
+
+def discover_sage_motions(path: str | Path) -> list[Path]:
+    root = Path(path).expanduser()
+    if is_sage_motion(root):
+        return [root]
+    return sorted(candidate for candidate in root.rglob("*") if is_sage_motion(candidate)) if root.exists() else []
+
+
+def write_sage_motion(
+    folder: str | Path,
+    joint_names: Sequence[str],
+    control_rows: Iterable[Sequence[Any]],
+    state_rows: Iterable[Sequence[Any]],
+    metadata: dict[str, Any],
+) -> Path:
+    root = Path(folder)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "joint_list.txt").write_text("\n".join(joint_names) + "\n", encoding="utf-8")
+    with (root / "control.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["type", "timestamp", "positions"])
+        writer.writerows(control_rows)
+    with (root / "state_motor.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["type", "timestamp", "positions", "velocities", "torques"])
+        writer.writerows(state_rows)
+    (root / "metadata.yaml").write_text(yaml.safe_dump(metadata, sort_keys=False), encoding="utf-8")
+    return root
+
+
+def copy_sage_motion(source: str | Path, destination: str | Path) -> Path:
+    source_root = Path(source)
+    validate_sage_dir(source_root)
+    destination_root = Path(destination)
+    destination_root.mkdir(parents=True, exist_ok=True)
+    for name in SAGE_FILES:
+        shutil.copy2(source_root / name, destination_root / name)
+    return destination_root
 
 
 def load_joint_list(path: Path) -> list[str]:
