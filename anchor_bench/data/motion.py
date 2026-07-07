@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Self, Sequence
 
 import numpy as np
 
@@ -46,7 +46,7 @@ class JointLayout:
             raise ValueError(f"joints not found in joint_list.txt: {', '.join(missing)}")
         return np.asarray([lookup[name] for name in requested_names], dtype=int)
 
-    def select(self, requested: Sequence[str]) -> tuple["JointLayout", np.ndarray]:
+    def select(self, requested: Sequence[str]) -> tuple[JointLayout, np.ndarray]:
         requested_names = tuple(str(name) for name in requested)
         return JointLayout(requested_names), self.indices(requested_names)
 
@@ -70,10 +70,10 @@ class MotionSignal:
         object.__setattr__(self, "time", time)
         object.__setattr__(self, "values", values)
 
-    def select_columns(self, indices: np.ndarray) -> "MotionSignal":
+    def select_columns(self, indices: np.ndarray) -> Self:
         return replace(self, values=self.values[:, indices])
 
-    def interpolate(self, target_time: np.ndarray) -> "MotionSignal":
+    def interpolate(self, target_time: np.ndarray) -> Self:
         target = _readonly_array(target_time, ndim=1, label="target timestamps")
         if not len(target):
             return replace(self, time=target, values=np.empty((0, self.values.shape[1])))
@@ -130,7 +130,7 @@ class MotionData:
     def joint_names(self) -> list[str]:
         return list(self.joints.names)
 
-    def select_joints(self, requested: Sequence[str]) -> "MotionData":
+    def select_joints(self, requested: Sequence[str]) -> Self:
         layout, indices = self.joints.select(requested)
         return replace(
             self,
@@ -141,7 +141,7 @@ class MotionData:
             effort=self.effort.select_columns(indices) if self.effort is not None else None,
         )
 
-    def resample(self, sample_dt: float) -> "MotionData":
+    def resample(self, sample_dt: float) -> Self:
         signals = [self.command_position, self.position]
         if self.velocity is not None:
             signals.append(self.velocity)
