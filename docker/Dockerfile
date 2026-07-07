@@ -31,7 +31,7 @@ COPY versions ./versions
 
 RUN python -m pip install --upgrade pip setuptools wheel \
     && python -m pip install -e ".[dev]" \
-    && python -m pip install "${NEWTON_PACKAGE}==${NEWTON_VERSION}" cmaes optuna pandas pyarrow "huggingface_hub>=0.34"
+    && python -m pip install "${NEWTON_PACKAGE}==${NEWTON_VERSION}" cmaes matplotlib optuna pandas pyarrow "huggingface_hub>=0.34"
 
 COPY docker/entrypoint.sh /usr/local/bin/anchor-bench-entrypoint
 RUN chmod +x /usr/local/bin/anchor-bench-entrypoint \
