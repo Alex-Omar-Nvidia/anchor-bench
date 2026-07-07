@@ -18,7 +18,7 @@ from anchor_bench.core.experiment_schema import (
 )
 from anchor_bench.core.paths import repo_root
 from anchor_bench.core.plan import CommandPlan
-from anchor_bench.data.sage import is_sage_motion
+from anchor_bench.data.sage import is_sage_motion, validate_sage_dir
 from anchor_bench.robots.registry import get_robot
 
 
@@ -204,7 +204,11 @@ def _discover_motions(dataset_name: str, dataset_cfg: ExperimentDataset) -> list
     if motions is None or motions == "*":
         if not real_root.exists():
             raise ExperimentConfigError(f"dataset {dataset_name} real_root does not exist: {real_root}")
-        discovered = [(path.name, path) for path in sorted(real_root.iterdir()) if is_sage_motion(path)]
+        discovered = [
+            (path.name, path)
+            for path in sorted(real_root.iterdir())
+            if _is_valid_sage_motion(path)
+        ]
         if not discovered:
             raise ExperimentConfigError(f"dataset {dataset_name} has no valid SAGE child folders under {real_root}")
         return discovered
@@ -220,10 +224,22 @@ def _discover_motions(dataset_name: str, dataset_cfg: ExperimentDataset) -> list
             motion_path = real_root / motion_name
         if not motion_name:
             raise ExperimentConfigError(f"dataset {dataset_name} has a motion without a name")
-        if not is_sage_motion(motion_path):
-            raise ExperimentConfigError(f"motion {motion_name} is not a valid SAGE folder: {motion_path}")
+        try:
+            validate_sage_dir(motion_path)
+        except (OSError, ValueError, yaml.YAMLError) as exc:
+            raise ExperimentConfigError(f"motion {motion_name} is not a valid SAGE folder: {exc}") from exc
         selected.append((motion_name, motion_path))
     return selected
+
+
+def _is_valid_sage_motion(path: Path) -> bool:
+    if not is_sage_motion(path):
+        return False
+    try:
+        validate_sage_dir(path)
+    except (OSError, ValueError, yaml.YAMLError):
+        return False
+    return True
 
 
 def _record_dry_run_warning(message: str, warnings: list[str] | None) -> None:

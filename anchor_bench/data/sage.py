@@ -21,6 +21,8 @@ def validate_sage_dir(data_dir: str | Path) -> dict[str, Any]:
     if missing:
         raise FileNotFoundError(f"{root} missing required SAGE files: {', '.join(missing)}")
     metadata = yaml.safe_load((root / "metadata.yaml").read_text(encoding="utf-8")) or {}
+    if not isinstance(metadata, dict):
+        raise ValueError("metadata.yaml must contain a mapping")
     expected = {
         "time_unit": {"microseconds", "seconds"},
         "position_unit": {"rad"},
