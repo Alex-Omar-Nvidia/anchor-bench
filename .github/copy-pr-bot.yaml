@@ -1,0 +1,11 @@
+# Configuration for NVIDIA's copy-pr-bot GitHub app, which copies vetted PR
+# commits to pull-request/<N> branches so self-hosted GPU runners can test them.
+# https://docs.gha-runners.nvidia.com/apps/copy-pr-bot/
+#
+# This file must live at exactly .github/copy-pr-bot.yaml (not .yml) and only
+# takes effect once committed to the default branch.
+enabled: true
+
+# Auto-copy PRs that are ready for review; leave draft PRs for manual /ok to test.
+auto_sync_ready: true
+auto_sync_draft: false
