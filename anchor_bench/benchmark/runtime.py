@@ -55,6 +55,14 @@ def _timestamp_us_text(timestamp_s: float) -> str:
     return f"{timestamp_s * 1e6:.1f}"
 
 
+def _read_benchmark_state(robot: Any, wp: Any, joint_ids_long: Any) -> tuple[Any, Any, Any]:
+    position = to_torch(robot.data.joint_pos, wp)[:, joint_ids_long].detach().cpu().numpy()
+    velocity = to_torch(robot.data.joint_vel, wp)[:, joint_ids_long].detach().cpu().numpy()
+    # Note: Implicit model's applied_torque is a clipped actuator torque est and not Newton's internal torque 
+    effort = to_torch(robot.data.applied_torque, wp)[:, joint_ids_long].detach().cpu().numpy()
+    return position, velocity, effort
+
+
 def _append_benchmark_sample(
     control_rows: list[list[Any]],
     state_rows: list[list[Any]],
@@ -63,13 +71,14 @@ def _append_benchmark_sample(
     command: list[float],
     position: list[float],
     velocity: list[float],
+    effort: list[float],
 ) -> None:
     position_values = list(position)
     velocity_values = list(velocity)
+    effort_values = list(effort)
     timestamp_text = _timestamp_us_text(timestamp_s)
-    effort = [0.0] * len(position_values)
     control_rows.append(["CONTROL", timestamp_text, list(command)])
-    state_rows.append(["STATE_MOTOR", timestamp_text, position_values, velocity_values, effort])
+    state_rows.append(["STATE_MOTOR", timestamp_text, position_values, velocity_values, effort_values])
 
 
 def _buffer_substeps(buffer_time: float, control_dt: float, control_divisor: int) -> int:
@@ -249,8 +258,7 @@ def run_robot_benchmark_batch(  # noqa: C901
             )
             _log(f"Init-pose sync: teleported {sync_count} envs to real row-0 state")
 
-        sim_pos = to_torch(robot.data.joint_pos, wp)[:, joint_ids_long].detach().cpu().numpy()
-        sim_vel = to_torch(robot.data.joint_vel, wp)[:, joint_ids_long].detach().cpu().numpy()
+        sim_pos, sim_vel, sim_effort = _read_benchmark_state(robot, wp, joint_ids_long)
         for env_index, motion in enumerate(loaded_motions):
             _append_benchmark_sample(
                 control_rows[env_index],
@@ -259,6 +267,7 @@ def run_robot_benchmark_batch(  # noqa: C901
                 command=motion.commands[0],
                 position=sim_pos[env_index].tolist(),
                 velocity=sim_vel[env_index].tolist(),
+                effort=sim_effort[env_index].tolist(),
             )
 
         max_steps = max(len(motion.commands) for motion in loaded_motions)
@@ -277,8 +286,7 @@ def run_robot_benchmark_batch(  # noqa: C901
                 scene.write_data_to_sim()
                 sim.step(render=False)
                 scene.update(physics_dt)
-            sim_pos = to_torch(robot.data.joint_pos, wp)[:, joint_ids_long].detach().cpu().numpy()
-            sim_vel = to_torch(robot.data.joint_vel, wp)[:, joint_ids_long].detach().cpu().numpy()
+            sim_pos, sim_vel, sim_effort = _read_benchmark_state(robot, wp, joint_ids_long)
             for env_index, motion in enumerate(loaded_motions):
                 if not active[env_index]:
                     continue
@@ -289,6 +297,7 @@ def run_robot_benchmark_batch(  # noqa: C901
                     command=command_batch[env_index],
                     position=sim_pos[env_index].tolist(),
                     velocity=sim_vel[env_index].tolist(),
+                    effort=sim_effort[env_index].tolist(),
                 )
 
         first_sim_output: Path | None = None

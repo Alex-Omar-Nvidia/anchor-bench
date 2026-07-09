@@ -750,6 +750,7 @@ class RuntimeWorkflowTests(unittest.TestCase):
             command=[0.0, 0.1],
             position=[0.0, 0.1],
             velocity=[0.0, 0.0],
+            effort=[0.0, 0.0],
         )
 
         self.assertEqual(["CONTROL", "0.0", [0.0, 0.1]], control_rows[0])
@@ -762,11 +763,68 @@ class RuntimeWorkflowTests(unittest.TestCase):
             command=[0.01, 0.11],
             position=[0.01, 0.12],
             velocity=[5.0, 10.0],
+            effort=[0.5, -0.25],
         )
 
         self.assertEqual(["CONTROL", "2000.0", [0.01, 0.11]], control_rows[1])
         self.assertAlmostEqual(state_rows[1][3][0], 5.0)
         self.assertAlmostEqual(state_rows[1][3][1], 10.0)
+
+    def test_benchmark_sample_rows_preserve_effort(self):
+        from anchor_bench.benchmark.runtime import _append_benchmark_sample
+
+        control_rows: list[list[object]] = []
+        state_rows: list[list[object]] = []
+
+        _append_benchmark_sample(
+            control_rows,
+            state_rows,
+            timestamp_s=0.002,
+            command=[0.01, 0.11],
+            position=[0.01, 0.12],
+            velocity=[5.0, 10.0],
+            effort=[0.5, -0.25],
+        )
+
+        self.assertEqual([0.5, -0.25], state_rows[0][4])
+
+    def test_benchmark_state_reads_applied_torque(self):
+        import numpy as np
+
+        from anchor_bench.benchmark import runtime
+
+        reader = getattr(runtime, "_read_benchmark_state", None)
+        self.assertIsNotNone(reader)
+
+        class FakeTensor:
+            def __init__(self, values):
+                self.values = np.asarray(values, dtype=float)
+
+            def __getitem__(self, key):
+                return FakeTensor(self.values[key])
+
+            def detach(self):
+                return self
+
+            def cpu(self):
+                return self
+
+            def numpy(self):
+                return self.values
+
+        robot = SimpleNamespace(
+            data=SimpleNamespace(
+                joint_pos=FakeTensor([[1.0, 2.0, 3.0]]),
+                joint_vel=FakeTensor([[4.0, 5.0, 6.0]]),
+                applied_torque=FakeTensor([[7.0, 8.0, 9.0]]),
+            )
+        )
+        with patch("anchor_bench.benchmark.runtime.to_torch", side_effect=lambda value, _wp: value):
+            position, velocity, effort = reader(robot, object(), [2, 0])
+
+        np.testing.assert_allclose(position, [[3.0, 1.0]])
+        np.testing.assert_allclose(velocity, [[6.0, 4.0]])
+        np.testing.assert_allclose(effort, [[9.0, 7.0]])
 
     def test_optimizer_requires_cmaes_unless_random_fallback_is_explicit(self):
         from anchor_bench.core.schemas import CMAESConfig
