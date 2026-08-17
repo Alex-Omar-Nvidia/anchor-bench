@@ -1,129 +1,244 @@
 # Anchor Bench
 
-Anchor Bench is a focused system identification (SysID) and sim-to-real benchmark package for robot
-actuator models on the Isaac Sim, Newton, and Isaac Lab versions pinned in
-[`versions/compatibility.toml`](versions/compatibility.toml).
+[![Tests](https://github.com/NVIDIA-dev/anchor-bench/actions/workflows/quality.yml/badge.svg?branch=refactor-main)](https://github.com/NVIDIA-dev/anchor-bench/actions/workflows/quality.yml)
+[![Coverage](/../badges/badges/coverage.svg)](https://github.com/NVIDIA-dev/anchor-bench/actions/workflows/quality.yml)
 
-The repo provides robot configs, data loaders, SysID command builders, Newton
-benchmark command builders, and analysis helpers around the actuator-identification workflow.
+Anchor Bench is an early-stage, configuration-driven Python package for robot
+actuator tooling.
 
-## Compatibility
+The currently implemented functionality is limited to:
 
-[`versions/compatibility.toml`](versions/compatibility.toml) is the single
-source of truth for supported Isaac Sim, Newton, Isaac Lab, and Python versions.
-`setup.sh` and the Python environment checks consume that manifest.
+- parsing and strictly validating `actuator_sys_id`, `trajectory_v1`, and
+  `training` YAML configurations;
+- dispatching validated configurations through the task runner;
+- generating piecewise actuator command trajectories as Parquet datasets;
+- loading local or HTTP(S) Parquet datasets and resampling their signals onto a
+  uniform time grid;
+- preparing mapped training trajectories as Parquet artifacts;
+- loading a USD model and its initial state through the optional Newton runtime;
+  and
+- tracking portable run parameters, metrics, tags, and artifacts through the
+  bundled MLflow backend or custom backends injected into a task runner.
+
+The actuator system-identification pipeline fits actuator parameters by
+evaluating CMA-ES populations in replicated Newton worlds and writes the best
+parameters and optimization history to the task output directory.
 
 ## Installation
 
-Use the full Docker image for SysID and benchmark playback with Isaac Sim, Isaac Lab, and Newton.
+Anchor Bench requires Python 3.10 or newer because Newton requires Python
+3.10+. Python 3.12 is recommended because it matches Isaac Lab's recommended
+Python version. The repository's `.python-version` configures uv to use Python
+3.12 by default.
+
+Anchor Bench uses [uv](https://docs.astral.sh/uv/) for environment and
+dependency management. From the repository root, create the environment and
+install the package:
 
 ```bash
-./setup.sh --full
-./setup.sh --check
-./setup.sh --shell
+uv sync
 ```
 
-| Command | Purpose |
-| --- | --- |
-| `./setup.sh --shell` | Open the persistent full container; the environment is checked automatically |
-| `./docker/run-gui.sh` | Run a single GUI container |
-| `./docker/run-headless.sh` | Run a single headless container |
-| `anchor-bench --help` | Show top-level CLI commands inside the container |
-
-Container wrappers run as your host UID/GID so generated outputs stay writable.
-For local Isaac Lab development with `third_party/IsaacLab`, see
-[CLI commands](docs/cli.md).
-
-## Quick Start: SO-101
-
-SO-101 includes `assets/robots/so101/files/so101.usd` for quick checks. Set
-`ANCHOR_BENCH_ASSET_DIR` only when you want to override it with your own USD
-assets.
-
-Download and convert NVIDIA's
-[Anchor-Lab SO-101 motion folder](https://huggingface.co/datasets/nvidia/Anchor-Lab/tree/main/data/so101_arm_50motion)
-before the first run:
+Install the optional Newton dependency to use `NewtonSimulationContext`:
 
 ```bash
-# Open the full container.
-./setup.sh --shell
-
-# Download, verify, and convert every parquet in the folder.
-python scripts/prepare_huggingface_parquets.py \
-  https://huggingface.co/datasets/nvidia/Anchor-Lab/tree/main/data/so101_arm_50motion
-
-# Optional: validate one epoch of real-data actuator training.
-anchor-bench train-actuator --robot so101 --final-epochs 1 --skip-optuna
-
-# SysID uses the converted training figure-eight motion by default.
-anchor-bench sysid \
-  --robot so101 \
-  --headless --num-envs 2 --max-iter 1 --max-trajectory-len 200
-
-# Benchmark
-anchor-bench benchmark \
-  --robot so101 \
-  --actuator-model implicit \
-  --seed 42 \
-  --actuator-params inputs/actuator_params/so101/fitted_seed42.yaml \
-  --headless
-
-# Analyze
-anchor-bench analyze --robot so101
+uv sync --extra simulation
 ```
 
-The importer infers `so101` from the folder name and writes converted motions
-under `inputs/datasets/so101/so101_arm_50motion/`. The 42 upstream
-`train-*` motions remain under `train/`; the 8 `heldout-*` motions remain
-under `heldout/` and must not influence normalization or model selection.
-
-Robot `run.yaml` supplies the default SysID dataset/output, benchmark
-motion/output, simulation timing, and analysis output/filter settings. CLI
-arguments override those defaults when you need a one-off run.
-
-## Common Commands
+For development, install the test and quality-check dependencies:
 
 ```bash
-anchor-bench robots list
-anchor-bench robots describe so101
-
-# Full experiments (multiple configs)
-anchor-bench experiment benchmark configs/experiments/so101_anchor_lab_figure_eight.yaml
-anchor-bench experiment analyze configs/experiments/so101_anchor_lab_figure_eight.yaml
+uv sync --extra dev
 ```
 
-See [CLI commands](docs/cli.md) for the full command reference.
+The default installation includes the bundled MLflow backend and its tracking
+SDK. See the [MLOps backend guide](docs/mlops.md) for the shared API, opt-in
+task-run lifecycle, task configuration, and backend contract.
 
-## Repo Layout
+## Command-line usage
 
-```text
-anchor_bench/   Python package: CLI, loaders, runners, runtime helpers
-configs/        Declarative robot and experiment configuration
-assets/         Robot USD/MJCF/mesh assets and manifests
-inputs/         Measured datasets and curated frozen actuator params
-outputs/        Generated SysID, training, benchmark, and analysis artifacts
-third_party/    Ignored local artifacts and optional vendor checkouts
+The command-line interface accepts one YAML configuration file:
+
+```bash
+uv run anchor-bench --config path/to/config.yaml
 ```
 
-See [repo structure](docs/repo-structure.md) for the detailed rules.
+Successful tasks write a `.completed` marker in their output directory. A
+later invocation with the same configuration skips the task while that marker
+is present. Pass `--force` to run it again:
 
-## Docs
+```bash
+uv run anchor-bench --config path/to/config.yaml --force
+```
 
-- [CLI commands](docs/cli.md): full `anchor-bench` command reference.
-- [Repo structure](docs/repo-structure.md): what belongs in `configs/`, `assets/`, `inputs/`, `outputs`, and `third_party/`.
-- [Artifacts](docs/artifacts.md): large files, SO-101 USD handling, and generated output locations.
-- [Host-safe end-to-end test](docs/end-to-end-test.md): SysID to benchmark to analysis contract coverage.
-- [Robot plugins](docs/robot-plugin.md): files required to add a new robot.
-- [G1 neural actuator recipes](docs/g1-neural-actuator-recipes.md): supported and experimental G1 training paths.
+By default, task artifacts are written to a generated hash folder. Pass
+`--output` to use a specific folder instead:
 
-## Acknowledgements
+```bash
+uv run anchor-bench --config path/to/config.yaml --output path/to/artifacts
+```
 
-Anchor Bench uses SAGE-compatible trajectory and analysis conventions for
-sim-to-real benchmark data, including `control.csv`, `state_motor.csv`,
-`joint_list.txt`, and `metadata.yaml` files. See
-[SAGE](https://github.com/isaac-sim2real/sage) for the upstream sim-to-real
-benchmarking work.
+Use `--help` to display the available option:
 
-The SysID optimizer follows a PACE Sim2Real-style CMA-ES workflow, with parallel
-candidate evaluation and normalized parameter bounds. See
-[PACE Sim2Real](https://github.com/leggedrobotics/pace-sim2real) from ETH Zurich.
+```bash
+uv run anchor-bench --help
+```
+
+The `actuator_sys_id`, `trajectory_v1`, and `training` configuration types are
+registered. A
+minimal actuator configuration looks like this:
+
+```yaml
+type: actuator_sys_id
+joint_parameters:
+  - names: [hip]
+    controller:
+      type: pd
+      clamps:
+        effort_limit: 120.0
+        velocity_limit: 30.0
+      stiffness: {lower: 1.0, upper: 100.0, initial: 20.0}
+      damping: {lower: 0.0, upper: 10.0}
+    parameters:
+      dry_friction: {lower: 0.0, upper: 1.0}
+      viscous_friction: {lower: 0.0, upper: 1.0}
+      armature: {lower: 0.0, upper: 0.1}
+optimizer:
+  type: python-cmaes
+  sigma: 0.5
+  max_iterations: 100
+  epsilon: 0.001
+simulation:
+  type: newton
+  usd_path: assets/robots/test.usd
+  physics_freq: 1000
+  control_freq: 200
+  render_freq: 60
+  solver:
+    type: warp_mujoco
+    solver_iterations: 10
+    line_search_iterations: 4
+dataset:
+  type: parquet
+  source: runs/actuator.parquet
+  # Optional: translate Parquet joint prefixes to the names authored in the USD.
+  joint_name_mapping:
+    recorded_hip: hip
+  resampling:
+    type: uniform
+    dt: 0.005
+```
+
+Configuration objects are strict: unknown fields, coerced values, invalid
+bounds, and unsupported `type` values are rejected.
+
+## Trajectory generation
+
+The `trajectory_v1` task generates ordered hold, transition, sine, and linear
+chirp pieces. The supplied actuator order defines every pose array and the
+output field order. For example:
+
+```bash
+uv run anchor-bench \
+  --config examples/so101_motion_pack.yaml \
+  --output outputs/so101_motion_pack
+```
+
+The task writes `trajectories.parquet` in the long-form actuator dataset shape:
+`time_ns`, `time_utc`, `experiment`, `field`, and `value`. It contains only
+`<actuator>/command_q` fields. Synthetic time begins at the Unix epoch for each
+trajectory, making both timestamp columns deterministic. Piece durations are
+converted to sample counts with Python's round-to-nearest, ties-to-even
+behavior, and transition endpoints are excluded so the next piece begins at
+the exact target pose. A nonzero `ramp_s` applies a linear fade-in and fade-out
+envelope to sine and chirp offsets.
+
+## Dataset loading
+
+`DatasetLoader` reads Parquet data from a local path or an HTTP(S) URL and
+linearly resamples each experiment over the time range shared by all its
+signals:
+
+```python
+from anchor_bench.data import DatasetLoader
+
+dataset = DatasetLoader.load("recording.parquet", dt=0.02)
+```
+
+Input data must contain `time_ns`, `experiment`, `field`, and `value` columns.
+When Parquet and USD joint names differ, set `dataset.joint_name_mapping` from
+each Parquet joint prefix to its USD joint name. The mapping is partial: joint
+prefixes not listed there remain unchanged. The USD name (the mapping value) is
+the canonical name used internally and must also be used in
+`joint_parameters[].names`. For example, `recorded_hip: hip` converts
+`recorded_hip/actual_q` to `hip/actual_q`, and the corresponding joint parameter
+group must contain `names: [hip]`.
+
+Multiple aliases may map to the same USD joint when loading a Parquet glob:
+
+```yaml
+dataset:
+  source: recordings/*.parquet
+  joint_name_mapping:
+    recorded_hip: hip
+    HIP: hip
+    Hip: hip
+```
+
+This supports files or experiments that use different aliases. Within one
+experiment, however, only one alias may identify a given USD joint. If multiple
+source aliases in the same experiment map to the same field, the loader reports
+a conflict instead of silently merging their samples.
+
+The returned data frame uses `(experiment, time_ns)` as its index and one column
+per signal field.
+
+The training task maps those signal columns into recurrent input and target
+trajectories and writes them to `trajectories.parquet` in its output directory.
+The artifact is long-form, with `sequence`, `mapping`, `kind`, `experiment`,
+`time_ns`, `feature`, and `value` columns.
+
+## Newton model loading
+
+After installing the `simulation` extra, a USD model can be loaded through the
+Newton adapter:
+
+```python
+from anchor_bench.core import NewtonSimulationContext
+
+model, state = NewtonSimulationContext().load("robot.usda")
+```
+
+This adapter only constructs the Newton model and initial state; it does not run
+a simulation.
+
+## Testing and quality checks
+
+Run the unit test suite with coverage:
+
+```bash
+uv run pytest --cov=anchor_bench --cov-report=term-missing
+```
+
+Tests marked `integration` are excluded by default because they download an
+external dataset and exercise the dataset-loading workflow. Run them explicitly
+with network access:
+
+```bash
+uv run pytest -m integration
+```
+
+Run the same static checks used by CI:
+
+```bash
+uv run ruff check anchor_bench tests
+uv run ruff format --check anchor_bench tests
+uv run pyright
+```
+
+## Documentation status
+
+The guides in [`docs/`](docs/) describe an earlier architecture and are
+outdated. Do not use them as instructions for the current package. Until they
+are rewritten, this README, the source code, and the tests are the sources of
+truth for implemented behavior.

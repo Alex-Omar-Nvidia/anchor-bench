@@ -1,67 +1,19 @@
+"""Core task-runner and simulation functionality."""
 
-from anchor_bench.core.plan import CommandPlan
-from anchor_bench.core.run_config import (
-    SimulationTiming,
-    defaulted_value,
-    resolve_repo_path,
-    resolve_repo_path_text,
-    resolve_required_text,
-    resolve_simulation_timing,
+from anchor_bench.core.artifacts import (
+    get_or_create_output_folder,
+    resolve_repo_root,
+    write_yaml,
 )
-from anchor_bench.core.schemas import (
-    ActuatorFile,
-    AnalysisDefaults,
-    ActuatorSpec,
-    BenchmarkDefaults,
-    BenchmarkRunConfig,
-    BoundsRange,
-    CMAESConfig,
-    ClampingSpec,
-    ControllerSpec,
-    DelaySpec,
-    ExperimentActuatorModel,
-    ExperimentFile,
-    ResidualSpec,
-    RobotRunFile,
-    SimulationDefaults,
-    RobotSpec,
-    SysIdBoundsFile,
-    SysIdDefaults,
-    SysIdRunConfig,
-    TrainActuatorRunConfig,
-    TrainingDefaults,
-)
-from anchor_bench.core.versions import ExternalVersions, load_external_versions
+from anchor_bench.core.simulation import SimulationContext
+from anchor_bench.core.simulation.newton import NewtonSimulationContext
+from anchor_bench.core.task_runner import TaskRunner
 
 __all__ = [
-    "ActuatorFile",
-    "AnalysisDefaults",
-    "ActuatorSpec",
-    "BenchmarkDefaults",
-    "BenchmarkRunConfig",
-    "BoundsRange",
-    "CMAESConfig",
-    "ClampingSpec",
-    "CommandPlan",
-    "ControllerSpec",
-    "DelaySpec",
-    "ExperimentActuatorModel",
-    "ExperimentFile",
-    "ResidualSpec",
-    "ExternalVersions",
-    "RobotRunFile",
-    "SimulationDefaults",
-    "RobotSpec",
-    "SimulationTiming",
-    "SysIdBoundsFile",
-    "SysIdDefaults",
-    "SysIdRunConfig",
-    "TrainActuatorRunConfig",
-    "TrainingDefaults",
-    "defaulted_value",
-    "load_external_versions",
-    "resolve_repo_path",
-    "resolve_repo_path_text",
-    "resolve_required_text",
-    "resolve_simulation_timing",
+    "NewtonSimulationContext",
+    "SimulationContext",
+    "TaskRunner",
+    "get_or_create_output_folder",
+    "resolve_repo_root",
+    "write_yaml",
 ]

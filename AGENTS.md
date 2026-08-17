@@ -1,23 +1,62 @@
+# Repository agent instructions
 
-# Anchor Bench Agent Guide
+## Pre-commit gate
 
-This repo targets the Isaac Sim, Newton, and Isaac Lab versions pinned in
-`versions/compatibility.toml` — the single source of truth, consumed by
-`setup.sh` and `anchor_bench.core.versions`. Do not duplicate the pinned
-versions here; read them from that manifest.
+Run this gate only when a change modifies Python files or project libraries and
+dependencies, including `pyproject.toml` or `uv.lock`. Do not run it for
+documentation-only, workflow-only, or unrelated configuration changes.
 
-## Rules
+Before committing or handing off an applicable change, agents must run all of
+the following checks from the repository root:
 
-- Keep robot support declarative under `configs/robots/<robot>/`.
-- Do not add legacy `model_type` actuator configs.
-- Keep Isaac Sim, Isaac Lab, and Newton imports lazy so dry-run tests run on a host-only Python.
-- Do not commit large datasets, neural weights, FMUs, generated benchmark outputs, or plots.
-- Prefer `anchor-bench ... --dry-run` for command construction tests.
+```bash
+uv run ruff check
+uv run ruff format --check
+uv run pyright
+uv run pytest <targeted-test-paths>
+```
 
-## Main Workflows
+Choose the targeted test paths that exercise the behavior affected by the
+change. Include directly modified tests and tests for any source modules whose
+behavior changed. For example:
 
-- Add a robot: follow `docs/robot-plugin.md`.
-- Run SysID: use `anchor-bench sysid ... --dry-run` first; see `docs/cli.md`.
-- Run benchmark/analysis: use `anchor-bench benchmark`, `anchor-bench analyze`, or
-  `anchor-bench experiment ... --dry-run`; see `docs/cli.md`.
-- Record run results as generated artifacts under `outputs/`; see `docs/artifacts.md`.
+```bash
+uv run pytest tests/test_dataset_loader.py tests/test_datasets.py
+```
+
+The default pytest configuration excludes tests marked `integration`. If a
+change affects an integration workflow, run its relevant integration tests
+explicitly as an additional gate:
+
+```bash
+uv run pytest -m integration tests/integration/test_dataset_loader_huggingface.py
+```
+
+When a change is broad, affects shared infrastructure, or has no clearly
+isolated test coverage, run the complete unit test suite with
+`uv run pytest`. Run the complete unit and integration suite with
+`uv run pytest -o "addopts="` when integration behavior may also be affected.
+
+All applicable gate commands must pass. Do not skip a check or suppress a
+failure without documenting the reason in the handoff.
+
+### Fixing gate failures
+
+- For `ruff check` failures, first apply safe automatic fixes with
+  `uv run ruff check --fix <affected-python-paths>`, fix any remaining
+  violations manually, and rerun `uv run ruff check`.
+- For `ruff format --check` failures, format the affected paths with
+  `uv run ruff format <affected-python-paths>`, then rerun
+  `uv run ruff format --check`.
+- For `pyright` failures, correct the implementation or type annotations and
+  rerun `uv run pyright`. Do not add an ignore solely to make the gate pass;
+  use one only when the reported issue is intentionally safe and document why.
+- For pytest failures, diagnose whether the implementation or the test is
+  incorrect, make the scoped correction, and rerun the same targeted test
+  command. Do not weaken assertions merely to make a failure pass.
+- If a library or dependency change leaves `uv.lock` stale, run `uv lock` and
+  repeat the applicable gate commands.
+
+Only fix failures related to the current change. If a gate exposes a pre-existing
+or unrelated failure, leave unrelated code untouched and report the command and
+failure in the handoff.

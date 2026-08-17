@@ -1,10 +1,6 @@
-from anchor_bench.data.motion import JointLayout, MotionData, MotionSignal
-from anchor_bench.data.sage import load_sage_motion, validate_sage_dir
+"""Load uniformly resampled datasets from local or HTTP(S) Parquet sources."""
 
-__all__ = [
-    "JointLayout",
-    "MotionData",
-    "MotionSignal",
-    "load_sage_motion",
-    "validate_sage_dir",
-]
+from anchor_bench.data.datasets import download_from_huggingface
+from anchor_bench.data.loader import DatasetLoader
+
+__all__ = ["DatasetLoader", "download_from_huggingface"]
