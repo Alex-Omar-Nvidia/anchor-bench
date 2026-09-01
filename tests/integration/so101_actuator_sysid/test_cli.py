@@ -1,19 +1,29 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+# pyright: reportAttributeAccessIssue=false
+
 """End-to-end CLI coverage for SO-101 actuator system identification."""
 
+import csv
+import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
 import yaml
+from pxr import Usd, UsdPhysics
 
 from anchor_bench.schema.actuator_sys_id import ActuatorSysIdConfig
 from anchor_bench.schema.parse import parse
 from anchor_bench.tasks.actuator_sys_id.dataset import load_trajectories
 from tests.integration.cli_runner import CliResult
-from tests.integration.usd_trajectory import usd_trajectory_accuracy
+from tests.integration.usd_trajectory import (
+    usd_trajectory_accuracy,
+    usd_trajectory_mse,
+)
+
+# The OpenUSD extension modules do not publish complete Python type information.
 
 pytestmark = pytest.mark.integration
 
@@ -71,6 +81,38 @@ def test_runs_actuator_sysid_config(
     assert all(
         (output_directory / artifact).is_file() for artifact in EXPECTED_ARTIFACTS
     )
+    identified_stage = Usd.Stage.Open(str(output_directory / "identified.usda"))
+    assert identified_stage is not None
+    identified_joints = {
+        prim.GetName(): prim
+        for prim in identified_stage.Traverse()
+        if prim.IsA(UsdPhysics.Joint)
+    }
+    clamps_by_joint = {
+        joint_name: group.controller.clamps
+        for group in config.joint_parameters
+        for joint_name in group.names
+    }
+    for joint_name in joint_names:
+        joint = identified_joints[joint_name]
+        drive = UsdPhysics.DriveAPI.Get(joint, "angular")
+        assert drive.GetMaxForceAttr().Get() == pytest.approx(
+            float(clamps_by_joint[joint_name].effort_limit)
+        )
+        assert joint.GetAttribute("newton:velocityLimit").Get() == pytest.approx(
+            float(clamps_by_joint[joint_name].velocity_limit) / (math.pi / 180.0)
+        )
+    with (output_directory / "optimization_log.csv").open(
+        newline="",
+        encoding="utf-8",
+    ) as stream:
+        best_scores = [float(row["best_mse"]) for row in csv.DictReader(stream)]
+    exported_mse = usd_trajectory_mse(
+        output_directory / "identified.usda",
+        config.dataset.source,
+        config,
+    )
+    assert exported_mse == pytest.approx(best_scores[-1], rel=1.0e-4, abs=1.0e-7)
 
     source_accuracy = usd_trajectory_accuracy(
         SOURCE_USD_PATH,
