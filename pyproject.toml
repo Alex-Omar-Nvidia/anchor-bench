@@ -13,7 +13,8 @@ license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
   "cmaes",
-  "mlflow>=3.15.1,<4",
+  "GitPython==3.1.60",
+  "mlflow>=3.15.2,<4",
   "newton[importers,sim]==1.4.0",
   "numpy>=1.23,<3",
   "optuna>=4.9,<5",
@@ -22,6 +23,7 @@ dependencies = [
   "pydantic>=2.7,<3",
   "protobuf>=7.36.0rc2,<8",
   "PyYAML>=6.0,<7",
+  "sqlparse>=0.6.0,<0.7",
   "torch>=2.3,<3",
   "typing-extensions>=4.0",
   "usd-core>=25.5,<26.5; python_full_version < '3.14'",
